@@ -28,6 +28,7 @@ function ScanContent() {
 
             // 2초 후 메인 페이지로 리다이렉트
             setTimeout(() => {
+                localStorage.removeItem('qr_session_id');
                 router.push('/');
             }, 2000);
         } else {

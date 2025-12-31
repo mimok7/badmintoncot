@@ -140,6 +140,7 @@ export default function Home() {
 
     if (data) {
       localStorage.setItem('badminton_member_id', data.id);
+      localStorage.removeItem('qr_session_id');
       setMember(data);
     }
   };
