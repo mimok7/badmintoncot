@@ -8,27 +8,25 @@ function ScanContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const [status, setStatus] = useState<'validating' | 'success' | 'error'>('validating');
-    const [sessionId, setSessionId] = useState('');
 
     useEffect(() => {
         const session = searchParams.get('session');
+        const fixedSessionId = process.env.NEXT_PUBLIC_QR_SESSION_ID || 'qr_entrance_fixed_2024';
 
         if (!session) {
             setStatus('error');
             return;
         }
 
-        setSessionId(session);
-
-        // QR 세션 검증 (간단한 형식 체크)
-        if (session.startsWith('session_')) {
-            // 세션 ID를 localStorage에 저장
-            localStorage.setItem('qr_session_id', session);
+        // 고정 세션 ID와 비교하여 검증
+        if (session === fixedSessionId) {
+            // 유효한 QR 코드 - localStorage에 표시하고 메인 페이지로 이동
+            localStorage.setItem('qr_verified', 'true');
             setStatus('success');
 
             // 2초 후 메인 페이지로 리다이렉트
             setTimeout(() => {
-                localStorage.removeItem('qr_session_id');
+                localStorage.removeItem('qr_verified');
                 router.push('/');
             }, 2000);
         } else {
@@ -89,9 +87,6 @@ function ScanContent() {
                 </h1>
                 <p className="text-slate-500 mb-2 font-medium leading-relaxed">
                     잠시 후 로그인 페이지로 이동합니다.
-                </p>
-                <p className="text-xs text-slate-400 font-mono">
-                    세션: {sessionId.substring(0, 20)}...
                 </p>
             </div>
         </div>

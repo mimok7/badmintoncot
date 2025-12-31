@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
+import QRCode from 'qrcode.react';
 import { supabase } from '@/lib/supabase';
 import {
     QrCode,
@@ -54,7 +54,6 @@ interface Settings {
 export default function AdminPage() {
     const [activeMenu, setActiveMenu] = useState<MenuType>('qr');
     const [qrUrl, setQrUrl] = useState('');
-    const [sessionId, setSessionId] = useState('');
     const [baseUrl, setBaseUrl] = useState('');
     const [copied, setCopied] = useState(false);
     const [courts, setCourts] = useState<Court[]>([]);
@@ -69,7 +68,7 @@ export default function AdminPage() {
     useEffect(() => {
         const host = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
         setBaseUrl(host);
-        generateNewQR(host);
+        generateQRWithFixedSession(host);
         fetchCourts();
         fetchActiveSessions();
 
@@ -85,11 +84,10 @@ export default function AdminPage() {
         };
     }, []);
 
-    const generateNewQR = (currentBaseUrl?: string) => {
-        const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-        setSessionId(newSessionId);
+    const generateQRWithFixedSession = (currentBaseUrl?: string) => {
+        const fixedSessionId = process.env.NEXT_PUBLIC_QR_SESSION_ID || 'qr_entrance_fixed_2024';
         const host = currentBaseUrl || baseUrl;
-        const url = `${host}/scan?session=${newSessionId}`;
+        const url = `${host}/scan?session=${fixedSessionId}`;
         setQrUrl(url);
     };
 
@@ -161,36 +159,21 @@ export default function AdminPage() {
         const printWindow = window.open('', '_blank');
         if (!printWindow) return;
 
-        // QR SVG 추출
-        const svgElement = document.querySelector('#qr-code-svg') as SVGElement;
+        // QR Canvas 추출
+        const canvas = document.querySelector('#qr-code-canvas') as HTMLCanvasElement;
 
         const getQrDataUrl = (): Promise<string> => {
             return new Promise((resolve) => {
-                if (!svgElement) {
+                if (!canvas) {
                     resolve('');
                     return;
                 }
-                const svgData = new XMLSerializer().serializeToString(svgElement);
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                const img = new Image();
-
-                img.onload = () => {
-                    canvas.width = 1000; // 초고해상도
-                    canvas.height = 1000;
-                    if (ctx) {
-                        ctx.fillStyle = 'white';
-                        ctx.fillRect(0, 0, canvas.width, canvas.height);
-                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    }
-                    resolve(canvas.toDataURL('image/png'));
-                };
-                img.onerror = () => resolve('');
-                img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+                resolve(canvas.toDataURL('image/png'));
             });
         };
 
         const qrDataUrl = await getQrDataUrl();
+        const fixedSessionId = process.env.NEXT_PUBLIC_QR_SESSION_ID || 'qr_entrance_fixed_2024';
         const printContent = `
             <!DOCTYPE html>
             <html>
@@ -260,7 +243,7 @@ export default function AdminPage() {
                     </div>
 
                     <div class="footer">
-                    시설 관리자용 세션 ID: ${sessionId} | 자동 매칭 시스템 활성화 중
+                    고정 세션 ID: ${fixedSessionId} | 자동 매칭 시스템 활성화 중
                     </div>
                 </div>
                 </div>
@@ -352,8 +335,8 @@ export default function AdminPage() {
                                 <div className="bg-white rounded-3xl p-8 shadow-xl border border-slate-200 flex flex-col items-center">
                                     <div className="bg-white p-6 rounded-2xl shadow-inner mb-6 border-2 border-indigo-50">
                                         {qrUrl ? (
-                                            <QRCodeSVG
-                                                id="qr-code-svg"
+                                            <QRCode
+                                                id="qr-code-canvas"
                                                 value={qrUrl}
                                                 size={320}
                                                 level="H"
@@ -377,8 +360,10 @@ export default function AdminPage() {
                                             인쇄하기
                                         </button>
                                         <button
-                                            onClick={() => generateNewQR()}
-                                            className="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white py-4 rounded-xl font-bold hover:shadow-lg transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+                                            onClick={() => generateQRWithFixedSession()}
+                                            disabled={true}
+                                            className="bg-slate-400 text-white py-4 rounded-xl font-bold cursor-not-allowed flex items-center justify-center gap-2 opacity-50"
+                                            title="고정 QR 코드는 변경되지 않습니다"
                                         >
                                             <RefreshCw className="w-5 h-5" />
                                             새로고침
@@ -397,7 +382,8 @@ export default function AdminPage() {
                                             value={baseUrl}
                                             onChange={(e) => {
                                                 setBaseUrl(e.target.value);
-                                                const url = `${e.target.value}/scan?session=${sessionId}`;
+                                                const fixedSessionId = process.env.NEXT_PUBLIC_QR_SESSION_ID || 'qr_entrance_fixed_2024';
+                                                const url = `${e.target.value}/scan?session=${fixedSessionId}`;
                                                 setQrUrl(url);
                                             }}
                                             className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
@@ -422,8 +408,11 @@ export default function AdminPage() {
                                 </div>
 
                                 <div className="bg-white rounded-2xl p-6 shadow-md border border-slate-100">
-                                    <p className="text-xs font-bold text-slate-400 uppercase mb-2">세션 ID</p>
-                                    <p className="text-xs font-mono text-slate-500 break-all">{sessionId || '생성 중...'}</p>
+                                    <p className="text-xs font-bold text-slate-400 uppercase mb-2">세션 ID (고정)</p>
+                                    <p className="text-xs font-mono text-slate-500 break-all bg-slate-50 p-3 rounded-lg border border-slate-200">
+                                        {process.env.NEXT_PUBLIC_QR_SESSION_ID || 'qr_entrance_fixed_2024'}
+                                    </p>
+                                    <p className="text-[10px] text-slate-400 mt-2 font-medium">※ 모든 사용자가 동일한 고정 QR 코드를 사용합니다.</p>
                                 </div>
                             </div>
                         </div>

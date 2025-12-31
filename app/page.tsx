@@ -78,8 +78,8 @@ export default function Home() {
   }, [session]);
 
   const checkUser = async () => {
-    // QR 세션 확인
-    const qrSession = localStorage.getItem('qr_session_id');
+    // QR 검증 확인
+    const qrVerified = localStorage.getItem('qr_verified');
 
     const savedMemberId = localStorage.getItem('badminton_member_id');
     if (savedMemberId) {
@@ -191,10 +191,10 @@ export default function Home() {
   );
 
   if (!member) {
-    // QR 세션이 없으면 QR 스캔 안내 표시
-    const qrSession = localStorage.getItem('qr_session_id');
+    // QR 검증이 없으면 QR 스캔 안내 표시
+    const qrVerified = localStorage.getItem('qr_verified');
 
-    if (!qrSession) {
+    if (!qrVerified) {
       return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 p-6">
           <div className="bg-white/95 backdrop-blur-xl p-12 rounded-[3rem] shadow-2xl w-full max-w-md border border-white/60 text-center">
