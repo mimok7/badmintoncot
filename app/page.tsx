@@ -552,7 +552,7 @@ export default function Home() {
 
               {/* 제목과 데스크탑용 버튼 */}
               <div className="flex items-center gap-4">
-                <h2 className="text-2xl font-black bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 bg-clip-text text-transparent tracking-tight leading-tight">코트 현황</h2>
+                <h2 className="text-3xl font-black bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 bg-clip-text text-transparent tracking-tight leading-tight">코트 현황</h2>
                 
                 {/* 데스크탑용: 제목 옆 */}
                 <div className="hidden md:block">
