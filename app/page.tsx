@@ -439,7 +439,7 @@ export default function Home() {
       <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 p-6">
           <div className="bg-white/95 backdrop-blur-xl p-12 rounded-[3rem] shadow-2xl w-full max-w-md border border-white/60 text-center">
             <div className="w-24 h-24 bg-gradient-to-br from-indigo-100 to-indigo-200 rounded-[2rem] flex items-center justify-center mb-8 mx-auto animate-pulse">
-              <QrCode className="text-indigo-600 w-12 h-12" strokeWidth={2.5} />
+              <BadmintonIcon className="text-indigo-600 w-12 h-12" strokeWidth={2.5} />
             </div>
             <h1 className="text-4xl font-black mb-4 text-center bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent tracking-tight">
               QR 코드 스캔 필요

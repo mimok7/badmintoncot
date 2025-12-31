@@ -2,7 +2,8 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { QrCode, CheckCircle, Loader2, User } from 'lucide-react';
+import { CheckCircle, Loader2, User } from 'lucide-react';
+import { BadmintonIcon } from '../components/BadmintonIcon';
 import { supabase } from '@/lib/supabase';
 
 function ScanContent() {

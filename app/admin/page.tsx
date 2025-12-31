@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import QRCode from 'qrcode.react';
 import { supabase } from '@/lib/supabase';
 import {
-    QrCode,
     RefreshCw,
     Copy,
     Check,
@@ -20,6 +19,7 @@ import {
     Printer,
     LogOut
 } from 'lucide-react';
+import { BadmintonIcon } from '../components/BadmintonIcon';
 
 type MenuType = 'qr' | 'courts' | 'usage' | 'settings';
 
@@ -379,7 +379,7 @@ export default function AdminPage() {
     };
 
     const menuItems = [
-        { id: 'qr' as MenuType, icon: QrCode, label: 'QR 생성', color: 'indigo' },
+        { id: 'qr' as MenuType, icon: BadmintonIcon, label: 'QR 생성', color: 'indigo' },
         { id: 'courts' as MenuType, icon: LayoutDashboard, label: '코트 현황', color: 'blue' },
         { id: 'usage' as MenuType, icon: Activity, label: '사용 현황', color: 'green' },
         { id: 'settings' as MenuType, icon: Settings, label: '환경설정', color: 'slate' },
@@ -391,7 +391,7 @@ export default function AdminPage() {
             <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
                 <div className="text-center">
                     <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mb-4 mx-auto shadow-2xl">
-                        <Shield className="w-8 h-8 text-blue-600 animate-pulse" strokeWidth={2.5} />
+                        <BadmintonIcon className="w-8 h-8 text-blue-600 animate-pulse" strokeWidth={2.5} />
                     </div>
                     <p className="text-white font-bold text-lg">로딩 중...</p>
                 </div>
@@ -410,7 +410,7 @@ export default function AdminPage() {
                 <div className="p-6 border-b border-slate-200">
                     <div className="flex items-center gap-3 mb-2">
                         <div className="w-12 h-12 bg-gradient-to-br from-indigo-600 to-indigo-700 rounded-xl flex items-center justify-center shadow-lg">
-                            <Shield className="w-6 h-6 text-white" strokeWidth={2.5} />
+                            <BadmintonIcon className="w-6 h-6 text-white" strokeWidth={2.5} />
                         </div>
                         <div>
                             <h1 className="text-xl font-black text-slate-900">관리자</h1>

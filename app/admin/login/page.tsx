@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { Shield, Mail, Lock, LogIn, UserPlus } from 'lucide-react';
+import { Mail, Lock, LogIn, UserPlus } from 'lucide-react';
+import { BadmintonIcon } from '../../components/BadmintonIcon';
 
 export default function AdminLoginPage() {
     const router = useRouter();
@@ -90,7 +91,7 @@ export default function AdminLoginPage() {
                 {/* 로고 및 타이틀 */}
                 <div className="text-center mb-8">
                     <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl mb-4 shadow-2xl">
-                        <Shield className="w-10 h-10 text-white" strokeWidth={2.5} />
+                        <BadmintonIcon className="w-10 h-10 text-white" strokeWidth={2.5} />
                     </div>
                     <h1 className="text-4xl font-black text-white mb-2">
                         {isSignUp ? '관리자 회원가입' : '관리자 로그인'}
