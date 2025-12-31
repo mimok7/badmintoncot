@@ -40,6 +40,7 @@ export default function Home() {
   const [session, setSession] = useState<EntrySession | null>(null);
   const [timeLeft, setTimeLeft] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [myReservedCourtId, setMyReservedCourtId] = useState<number | null>(null);
 
   useEffect(() => {
     checkUser();
@@ -47,8 +48,14 @@ export default function Home() {
 
     const channel = supabase
       .channel('schema-db-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'courts' }, () => fetchCourts())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, () => fetchCourts())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'courts' }, () => {
+        fetchCourts();
+        checkMyReservation();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, () => {
+        fetchCourts();
+        checkMyReservation();
+      })
       .subscribe();
 
     return () => {
@@ -107,6 +114,18 @@ export default function Home() {
     setLoading(false);
   };
 
+  const checkMyReservation = async () => {
+    if (!member) return;
+    
+    const { data } = await supabase
+      .from('reservations')
+      .select('court_id')
+      .eq('user_id', member.id)
+      .single();
+    
+    setMyReservedCourtId(data?.court_id ?? null);
+  };
+
   const fetchCourts = async () => {
     const { data: courtsData } = await supabase.from('courts').select('*').order('id', { ascending: true });
     const { data: resData } = await supabase
@@ -123,6 +142,11 @@ export default function Home() {
         }) ?? []
       }));
       setCourts(updatedCourts);
+    }
+    
+    // 내 예약 상태도 함께 확인
+    if (member) {
+      checkMyReservation();
     }
   };
 
@@ -196,6 +220,29 @@ export default function Home() {
       }
     } else {
       alert('예약이 완료되었습니다!');
+      setMyReservedCourtId(courtId);
+      fetchCourts();
+    }
+  };
+
+  const handleCancelReservation = async () => {
+    if (!member || !myReservedCourtId) return;
+
+    const confirmed = confirm('대기 신청을 취소하시겠습니까?');
+    if (!confirmed) return;
+
+    const { error } = await supabase
+      .from('reservations')
+      .delete()
+      .eq('user_id', member.id)
+      .eq('court_id', myReservedCourtId);
+
+    if (error) {
+      console.error('예약 취소 오류:', error);
+      alert('예약 취소 중 오류가 발생했습니다.');
+    } else {
+      alert('예약이 취소되었습니다.');
+      setMyReservedCourtId(null);
       fetchCourts();
     }
   };
@@ -364,22 +411,34 @@ export default function Home() {
                     )}
                   </div>
 
-                  <button
-                    onClick={() => handleReserve(court.id)}
-                    className="w-full py-4 bg-gradient-to-r from-slate-900 to-slate-800 text-white text-sm rounded-[1.25rem] font-bold hover:from-indigo-600 hover:to-indigo-700 transition-all shadow-lg shadow-slate-900/20 hover:shadow-indigo-500/30 disabled:opacity-30 disabled:grayscale disabled:cursor-not-allowed disabled:hover:from-slate-900 disabled:hover:to-slate-800 flex items-center justify-center gap-2 group/btn active:scale-[0.98]"
-                    disabled={!session || court.current_users_count >= 4}
-                  >
-                    {!session ? (
-                      <>입장 후 신청 가능</>
-                    ) : court.current_users_count >= 4 ? (
-                      <>대기 마감</>
-                    ) : (
-                      <>
-                        대기 신청하기
-                        <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" strokeWidth={2.5} />
-                      </>
-                    )}
-                  </button>
+                  {myReservedCourtId === court.id ? (
+                    <button
+                      onClick={handleCancelReservation}
+                      className="w-full py-4 bg-gradient-to-r from-rose-600 to-rose-700 text-white text-sm rounded-[1.25rem] font-bold hover:from-rose-700 hover:to-rose-800 transition-all shadow-lg shadow-rose-500/30 flex items-center justify-center gap-2 group/btn active:scale-[0.98]"
+                    >
+                      신청 취소
+                      <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" strokeWidth={2.5} />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleReserve(court.id)}
+                      className="w-full py-4 bg-gradient-to-r from-slate-900 to-slate-800 text-white text-sm rounded-[1.25rem] font-bold hover:from-indigo-600 hover:to-indigo-700 transition-all shadow-lg shadow-slate-900/20 hover:shadow-indigo-500/30 disabled:opacity-30 disabled:grayscale disabled:cursor-not-allowed disabled:hover:from-slate-900 disabled:hover:to-slate-800 flex items-center justify-center gap-2 group/btn active:scale-[0.98]"
+                      disabled={!session || court.current_users_count >= 4 || myReservedCourtId !== null}
+                    >
+                      {!session ? (
+                        <>입장 후 신청 가능</>
+                      ) : court.current_users_count >= 4 ? (
+                        <>대기 마감</>
+                      ) : myReservedCourtId !== null ? (
+                        <>다른 코트 대기 중</>
+                      ) : (
+                        <>
+                          대기 신청하기
+                          <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" strokeWidth={2.5} />
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
