@@ -177,7 +177,7 @@ export default function Home() {
 
     const { error } = await supabase
       .from('reservations')
-      .insert([{ court_id: courtId, member_id: member.id }]);
+      .insert({ court_id: courtId, user_id: member.id });
 
     if (error) {
       if (error.code === '23505') alert('이미 이 코트에 대기 중입니다.');

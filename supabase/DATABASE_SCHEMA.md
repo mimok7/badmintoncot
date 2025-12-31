@@ -121,11 +121,13 @@ await supabase
 
 ## 4. reservations (예약 대기)
 
+> ⚠️ **중요**: 실제 DB에서는 `user_id` 컬럼을 사용합니다 (schema.sql의 `member_id`와 다름)
+
 | 컬럼명 | 타입 | 기본값 | 설명 |
 |--------|------|--------|------|
-| `id` | SERIAL | 자동 증가 | PK |
+| `id` | INTEGER | 자동 증가 | PK |
 | `court_id` | INTEGER | - | FK → courts.id |
-| `member_id` | UUID | - | FK → members.id |
+| `user_id` | UUID | - | FK → members.id |
 | `created_at` | TIMESTAMPTZ | `NOW()` | 예약 시간 |
 
 **제약조건:**
