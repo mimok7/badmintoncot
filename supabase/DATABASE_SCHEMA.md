@@ -130,6 +130,9 @@ await supabase
 | `user_id` | UUID | - | FK → members.id |
 | `created_at` | TIMESTAMPTZ | `NOW()` | 예약 시간 |
 
+**제약 조건:**
+- `UNIQUE(court_id, user_id)` - 동일 코트 중복 예약 방지
+
 **제약조건:**
 - `UNIQUE(court_id, member_id)` - 동일 코트 중복 예약 방지
 
