@@ -49,6 +49,14 @@ export default function Home() {
   const [myReservedCourtId, setMyReservedCourtId] = useState<number | null>(null);
   const [myTeamNumber, setMyTeamNumber] = useState<number | null>(null);
   const [selectedTeam, setSelectedTeam] = useState<{courtId: number, teamNumber: number} | null>(null);
+  const [myCurrentStatus, setMyCurrentStatus] = useState<'waiting' | 'confirmed' | 'playing' | null>(null);
+
+  // 브라우저 알림 권한 요청
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
 
   useEffect(() => {
     checkUser();
@@ -70,6 +78,61 @@ export default function Home() {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  // 내 팀 상태 변경 감지 및 알림
+  useEffect(() => {
+    if (!member) return;
+
+    const reservationChannel = supabase
+      .channel(`reservation-${member.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'reservations',
+          filter: `user_id=eq.${member.id}`
+        },
+        (payload) => {
+          const newStatus = payload.new.status;
+          const oldStatus = payload.old.status;
+          
+          console.log('예야 상태 변경:', { oldStatus, newStatus });
+          
+          // 상태가 playing으로 변경되면 알림
+          if (oldStatus !== 'playing' && newStatus === 'playing') {
+            const courtId = payload.new.court_id;
+            const teamNumber = payload.new.team_number;
+            
+            // 브라우저 알림
+            if ('Notification' in window && Notification.permission === 'granted') {
+              new Notification('🎾 경기 시작!', {
+                body: `코트 ${courtId} - 대기${teamNumber}팀 경기가 시작되었습니다!`,
+                icon: '/badminton-icon.png',
+                requireInteraction: true
+              });
+            }
+            
+            // 소리 재생 (선택적)
+            const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGH0fPTgjMGHm7A7+OZRQ0NUrDn77BdGAg+ltryxnMnBSl+zPLaizsIGGS57OihUBELTKXh8bllHAU2jdXzzn0vBSZ6yvHeizYIGWe97OmiUBAMT6fj8LZjHAY4kdfy');
+            audio.play().catch(() => {});
+            
+            // 화면 강조 효과
+            document.body.style.backgroundColor = '#10b981';
+            setTimeout(() => {
+              document.body.style.backgroundColor = '';
+            }, 1000);
+          }
+          
+          setMyCurrentStatus(newStatus);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(reservationChannel);
+    };
+  }, [member]);
 
   useEffect(() => {
     if (session?.expires_at) {
@@ -119,13 +182,14 @@ export default function Home() {
         // 예약 상태 확인
         const { data: reservationData } = await supabase
           .from('reservations')
-          .select('court_id, team_number')
+          .select('court_id, team_number, status')
           .eq('user_id', savedMemberId)
           .maybeSingle();
         
         if (reservationData) {
           setMyReservedCourtId(reservationData.court_id);
           setMyTeamNumber(reservationData.team_number);
+          setMyCurrentStatus(reservationData.status);
         }
       } else {
         localStorage.removeItem('badminton_member_id');
@@ -139,12 +203,13 @@ export default function Home() {
     
     const { data } = await supabase
       .from('reservations')
-      .select('court_id, team_number')
+      .select('court_id, team_number, status')
       .eq('user_id', member.id)
       .maybeSingle();
     
     setMyReservedCourtId(data?.court_id ?? null);
     setMyTeamNumber(data?.team_number ?? null);
+    setMyCurrentStatus(data?.status ?? null);
   };
 
   const fetchCourts = async () => {
@@ -391,6 +456,19 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/20 pb-24">
+      {/* 경기 시작 알림 배너 */}
+      {myCurrentStatus === 'playing' && (
+        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 animate-bounce">
+          <div className="bg-gradient-to-r from-green-500 to-emerald-500 text-white px-8 py-4 rounded-2xl shadow-2xl shadow-green-500/50 flex items-center gap-3 border-4 border-white">
+            <span className="text-3xl">🎾</span>
+            <div>
+              <p className="font-black text-lg">경기 시작!</p>
+              <p className="text-sm font-medium">코트로 이동해주세요</p>
+            </div>
+          </div>
+        </div>
+      )}
+      
       <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur-lg border-b border-slate-200/60 mb-10 shadow-sm">
         <div className="max-w-7xl mx-auto px-6 h-20 flex justify-between items-center">
           <div className="flex items-center gap-3">
