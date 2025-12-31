@@ -52,33 +52,41 @@ function ScanContent() {
                 // 3. 회원 자동 생성
                 const { data: memberData, error: memberError } = await supabase
                     .from('members')
-                    .insert([{ nickname: guestNickname }])
-                    .select()
+                    .insert({ nickname: guestNickname })
+                    .select('*')
                     .single();
 
                 if (memberError) {
                     console.error('회원 생성 오류:', memberError);
+                    setMessage(`회원 생성 실패: ${memberError.message}`);
                     setStatus('error');
                     return;
                 }
 
+                console.log('생성된 회원:', memberData);
                 memberId = memberData.id;
                 localStorage.setItem('badminton_member_id', memberId);
             }
 
             // 4. 입장 처리 (entry_sessions)
             setMessage('입장 처리 중...');
+            console.log('입장 처리 시도, member_id:', memberId);
+            
             const { data: entryData, error: entryError } = await supabase
                 .from('entry_sessions')
-                .insert([{ member_id: memberId }])
-                .select()
+                .insert({ member_id: memberId })
+                .select('*')
                 .single();
 
             if (entryError) {
                 console.error('입장 처리 오류:', entryError);
+                console.error('오류 상세:', JSON.stringify(entryError, null, 2));
+                setMessage(`입장 처리 실패: ${entryError.message}`);
                 setStatus('error');
                 return;
             }
+
+            console.log('입장 처리 성공:', entryData);
 
             // 5. 성공 - 메인 페이지로 이동
             setStatus('success');
