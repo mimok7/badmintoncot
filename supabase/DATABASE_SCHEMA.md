@@ -256,14 +256,18 @@ const { data } = await supabase
 
 3. **Supabase Insert 문법**:
    ```typescript
-   // ✅ 올바른 방법
+   // ✅ 올바른 방법 - 단일 객체 사용
    .insert({ column: value }).select('*').single()
    
    // ❌ 잘못된 방법 (배열 사용)
    .insert([{ column: value }])
    ```
 
-4. **스키마 캐시 새로고침**:
+5. **entry_sessions 테이블 주의사항**:
+   - 컬럼명: `user_id` (members.id 참조)
+   - `id` 컬럼은 직접 `crypto.randomUUID()`로 생성 필요
+
+6. **스키마 캐시 새로고침**:
    테이블 구조 변경 후 반드시 실행:
    ```sql
    NOTIFY pgrst, 'reload schema';
