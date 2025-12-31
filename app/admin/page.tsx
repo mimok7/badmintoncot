@@ -659,55 +659,6 @@ export default function AdminPage() {
                                 </div>
                             </div>
                         </div>
-
-                        <div className="bg-white rounded-2xl p-6 shadow-lg border border-slate-200">
-                            <h3 className="text-xl font-black text-slate-900 mb-6">활성 세션 목록</h3>
-                            {activeSessions.length === 0 ? (
-                                <div className="text-center py-12 text-slate-400">
-                                    <Users className="w-16 h-16 mx-auto mb-4 opacity-20" />
-                                    <p className="font-semibold">현재 활성 세션이 없습니다</p>
-                                </div>
-                            ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                                    {(() => {
-                                        // 중복 제거 및 시간 순 정렬
-                                        const uniqueSessions = activeSessions
-                                            .filter((session, index, self) => 
-                                                index === self.findIndex(s => s.members?.id === session.members?.id)
-                                            )
-                                            .sort((a, b) => new Date(b.entry_at).getTime() - new Date(a.entry_at).getTime());
-                                        
-                                        return uniqueSessions.map((session) => (
-                                            <div
-                                                key={session.id}
-                                                className="p-4 bg-slate-50 rounded-xl border border-slate-200 hover:bg-slate-100 transition-colors"
-                                            >
-                                                <div className="flex items-start gap-3 mb-3">
-                                                    <div className="w-10 h-10 bg-gradient-to-br from-indigo-100 to-indigo-200 rounded-lg flex items-center justify-center flex-shrink-0">
-                                                        <Users className="w-5 h-5 text-indigo-600" strokeWidth={2.5} />
-                                                    </div>
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="font-bold text-slate-900 truncate">{session.members?.nickname || '알 수 없음'}</p>
-                                                        <p className="text-xs text-slate-500 font-semibold">
-                                                            회원 #{session.members?.member_number || 'N/A'}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <div className="flex items-center gap-2 text-sm font-bold text-slate-600">
-                                                        <Clock className="w-4 h-4 flex-shrink-0" />
-                                                        <span className="truncate">{getTimeRemaining(session.expires_at)}</span>
-                                                    </div>
-                                                    <p className="text-xs text-slate-400 pl-6">
-                                                        입장: {new Date(session.entry_at).toLocaleTimeString('ko-KR')}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        ));
-                                    })()}
-                                </div>
-                            )}
-                        </div>
                     </div>
                 )}
 
