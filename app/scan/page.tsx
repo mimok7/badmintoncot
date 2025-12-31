@@ -2,14 +2,15 @@
 
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { QrCode, CheckCircle, Loader2 } from 'lucide-react';
+import { QrCode, CheckCircle, Loader2, User } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 function ScanContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const [status, setStatus] = useState<'validating' | 'success' | 'error'>('validating');
+    const [status, setStatus] = useState<'validating' | 'nickname-input' | 'processing' | 'success' | 'error'>('validating');
     const [message, setMessage] = useState('QR 코드를 확인하는 중...');
+    const [nickname, setNickname] = useState('');
 
     useEffect(() => {
         handleQRScan();
@@ -35,59 +36,74 @@ function ScanContent() {
             return;
         }
 
-        console.log('QR 검증 성공, 계정 생성 시작');
+        console.log('QR 검증 성공');
+
+        // 기존 회원 확인 (localStorage + DB 검증)
+        const savedMemberId = localStorage.getItem('badminton_member_id');
+        
+        if (savedMemberId) {
+            const { data: existingMember, error: checkError } = await supabase
+                .from('members')
+                .select('id')
+                .eq('id', savedMemberId)
+                .single();
+            
+            if (existingMember) {
+                // 기존 회원이면 바로 입장 처리
+                await processEntry(savedMemberId);
+                return;
+            } else {
+                // DB에 없으면 localStorage 삭제
+                localStorage.removeItem('badminton_member_id');
+            }
+        }
+
+        // 신규 회원이면 닉네임 입력 화면으로
+        setStatus('nickname-input');
+    };
+
+    const handleNicknameSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!nickname.trim()) {
+            alert('닉네임을 입력해주세요.');
+            return;
+        }
+
+        setStatus('processing');
+        setMessage('계정을 생성하는 중...');
 
         try {
-            // 1. 기존 회원 확인 (localStorage + DB 검증)
-            const savedMemberId = localStorage.getItem('badminton_member_id');
-            let memberId = savedMemberId;
-            let needsNewMember = !savedMemberId;
+            // 회원 생성
+            const { data: memberData, error: memberError } = await supabase
+                .from('members')
+                .insert({ nickname: nickname.trim() })
+                .select('*')
+                .single();
 
-            // localStorage에 저장된 회원이 실제 DB에 있는지 확인
-            if (savedMemberId) {
-                const { data: existingMember, error: checkError } = await supabase
-                    .from('members')
-                    .select('id')
-                    .eq('id', savedMemberId)
-                    .single();
-                
-                if (checkError || !existingMember) {
-                    console.log('저장된 회원 ID가 DB에 없음, 새로 생성합니다.');
-                    needsNewMember = true;
-                    localStorage.removeItem('badminton_member_id');
-                }
+            if (memberError) {
+                console.error('회원 생성 오류:', memberError);
+                setMessage(`회원 생성 실패: ${memberError.message}`);
+                setStatus('error');
+                return;
             }
 
-            if (needsNewMember) {
-                setMessage('게스트 계정을 생성하는 중...');
-                
-                // 2. 임의의 닉네임 생성 (Guest_랜덤번호)
-                const randomNum = Math.floor(Math.random() * 100000);
-                const guestNickname = `Guest_${randomNum}`;
+            console.log('생성된 회원:', memberData);
+            localStorage.setItem('badminton_member_id', memberData.id);
 
-                // 3. 회원 자동 생성
-                const { data: memberData, error: memberError } = await supabase
-                    .from('members')
-                    .insert({ nickname: guestNickname })
-                    .select('*')
-                    .single();
+            // 입장 처리
+            await processEntry(memberData.id);
 
-                if (memberError) {
-                    console.error('회원 생성 오류:', memberError);
-                    setMessage(`회원 생성 실패: ${memberError.message}`);
-                    setStatus('error');
-                    return;
-                }
+        } catch (error) {
+            console.error('닉네임 처리 오류:', error);
+            setStatus('error');
+        }
+    };
 
-                console.log('생성된 회원:', memberData);
-                memberId = memberData.id;
-                localStorage.setItem('badminton_member_id', memberId);
-            }
+    const processEntry = async (memberId: string) => {
+        setMessage('입장 처리 중...');
+        console.log('입장 처리 시도, user_id:', memberId);
 
-            // 4. 입장 처리 (entry_sessions)
-            setMessage('입장 처리 중...');
-            console.log('입장 처리 시도, user_id:', memberId);
-            
+        try {
             // UUID 직접 생성 (DB에 기본값이 없으므로)
             const entryId = crypto.randomUUID();
             
@@ -110,19 +126,19 @@ function ScanContent() {
 
             console.log('입장 처리 성공:', entryData);
 
-            // 5. 성공 - 메인 페이지로 이동
+            // 성공 - 메인 페이지로 이동
             setStatus('success');
             setTimeout(() => {
                 router.push('/');
             }, 2000);
 
         } catch (error) {
-            console.error('QR 스캔 처리 오류:', error);
+            console.error('입장 처리 오류:', error);
             setStatus('error');
         }
     };
 
-    if (status === 'validating') {
+    if (status === 'validating' || status === 'processing') {
         return (
             <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-indigo-50 via-white to-slate-50/50 p-6">
                 <div className="bg-white/80 backdrop-blur-xl p-12 rounded-[3rem] shadow-2xl shadow-indigo-200/30 w-full max-w-md border border-white/60 text-center">
@@ -135,6 +151,45 @@ function ScanContent() {
                     <p className="text-slate-500 font-medium leading-relaxed">
                         {message}
                     </p>
+                </div>
+            </div>
+        );
+    }
+
+    if (status === 'nickname-input') {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-indigo-50 via-white to-slate-50/50 p-6">
+                <div className="bg-white/80 backdrop-blur-xl p-12 rounded-[3rem] shadow-2xl shadow-indigo-200/30 w-full max-w-md border border-white/60">
+                    <div className="w-20 h-20 bg-gradient-to-br from-indigo-100 to-indigo-200 rounded-[1.5rem] flex items-center justify-center mb-8 mx-auto">
+                        <User className="text-indigo-600 w-10 h-10" strokeWidth={2.5} />
+                    </div>
+                    <h1 className="text-3xl font-black mb-3 text-center bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent tracking-tight">
+                        닉네임 입력
+                    </h1>
+                    <p className="text-slate-500 mb-8 font-medium leading-relaxed text-center">
+                        사용하실 닉네임을 입력해주세요
+                    </p>
+                    
+                    <form onSubmit={handleNicknameSubmit} className="space-y-6">
+                        <div>
+                            <input
+                                type="text"
+                                value={nickname}
+                                onChange={(e) => setNickname(e.target.value)}
+                                placeholder="닉네임을 입력하세요"
+                                className="w-full px-6 py-4 rounded-[1.5rem] border-2 border-slate-200 focus:border-indigo-400 focus:outline-none text-slate-800 font-medium placeholder:text-slate-400 bg-white/50 backdrop-blur-sm transition-all"
+                                maxLength={20}
+                                autoFocus
+                            />
+                        </div>
+                        <button
+                            type="submit"
+                            className="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 text-white py-4 rounded-[1.5rem] font-bold hover:from-indigo-700 hover:to-indigo-800 transition-all shadow-lg shadow-indigo-200/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled={!nickname.trim()}
+                        >
+                            입장하기
+                        </button>
+                    </form>
                 </div>
             </div>
         );
