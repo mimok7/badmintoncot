@@ -11,6 +11,21 @@ CREATE TABLE IF NOT EXISTS settings (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- settings 테이블 RLS 정책
+ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
+
+-- 모든 사용자가 settings를 읽을 수 있도록 허용 (public 접근)
+CREATE POLICY "Enable read access for all users" ON settings
+    FOR SELECT USING (true);
+
+-- 인증된 사용자만 settings를 업데이트할 수 있도록 허용
+CREATE POLICY "Enable update access for authenticated users" ON settings
+    FOR UPDATE USING (auth.role() = 'authenticated');
+
+-- 인증된 사용자만 settings를 삽입할 수 있도록 허용
+CREATE POLICY "Enable insert access for authenticated users" ON settings
+    FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+
 -- 초기 설정 데이터 삽입 (중복 방지)
 INSERT INTO settings (id, venue_name, operating_hours, contact_info, rules)
 VALUES (1, '스마트 배드민턴 코트', 

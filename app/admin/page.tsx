@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import QRCode from 'qrcode.react';
 import { supabase } from '@/lib/supabase';
 import {
@@ -16,7 +17,8 @@ import {
     ChevronRight,
     Clock,
     MapPin,
-    Printer
+    Printer,
+    LogOut
 } from 'lucide-react';
 
 type MenuType = 'qr' | 'courts' | 'usage' | 'settings';
@@ -52,6 +54,10 @@ interface Settings {
 }
 
 export default function AdminPage() {
+    const router = useRouter();
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const [userEmail, setUserEmail] = useState('');
     const [activeMenu, setActiveMenu] = useState<MenuType>('qr');
     const [qrUrl, setQrUrl] = useState('');
     const [baseUrl, setBaseUrl] = useState('');
@@ -64,6 +70,52 @@ export default function AdminPage() {
         contactInfo: '전화: 02-1234-5678 | 이메일: info@badminton.com',
         rules: '• 코트 이용 시간은 2시간으로 제한됩니다.\n• 4명이 모여야 코트 사용이 가능합니다.\n• 안전을 위해 운동화를 착용해주세요.\n• 코트 내 음식물 반입을 금지합니다.'
     });
+
+    // 인증 체크
+    useEffect(() => {
+        checkAuth();
+
+        const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'SIGNED_OUT' || !session) {
+                router.push('/admin/login');
+            } else if (event === 'SIGNED_IN' && session) {
+                setIsAuthenticated(true);
+                setUserEmail(session.user.email || '');
+            }
+        });
+
+        return () => {
+            authListener.subscription.unsubscribe();
+        };
+    }, [router]);
+
+    const checkAuth = async () => {
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            
+            if (!session) {
+                router.push('/admin/login');
+                return;
+            }
+
+            setIsAuthenticated(true);
+            setUserEmail(session.user.email || '');
+        } catch (error) {
+            console.error('인증 확인 오류:', error);
+            router.push('/admin/login');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleLogout = async () => {
+        try {
+            await supabase.auth.signOut();
+            router.push('/admin/login');
+        } catch (error) {
+            console.error('로그아웃 오류:', error);
+        }
+    };
 
     const handleSaveSettings = async () => {
         try {
@@ -333,6 +385,24 @@ export default function AdminPage() {
         { id: 'settings' as MenuType, icon: Settings, label: '환경설정', color: 'slate' },
     ];
 
+    // 로딩 중이거나 인증되지 않은 경우
+    if (isLoading) {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center">
+                <div className="text-center">
+                    <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mb-4 mx-auto shadow-2xl">
+                        <Shield className="w-8 h-8 text-blue-600 animate-pulse" strokeWidth={2.5} />
+                    </div>
+                    <p className="text-white font-bold text-lg">로딩 중...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (!isAuthenticated) {
+        return null;
+    }
+
     return (
         <div className="flex min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
             {/* Sidebar */}
@@ -346,6 +416,9 @@ export default function AdminPage() {
                             <h1 className="text-xl font-black text-slate-900">관리자</h1>
                             <p className="text-xs text-slate-500 font-semibold">Admin Dashboard</p>
                         </div>
+                    </div>
+                    <div className="mt-3 p-3 bg-slate-50 rounded-lg">
+                        <p className="text-xs text-slate-600 font-semibold truncate">{userEmail}</p>
                     </div>
                 </div>
 
@@ -373,6 +446,17 @@ export default function AdminPage() {
                         })}
                     </ul>
                 </nav>
+
+                {/* 로그아웃 버튼 */}
+                <div className="absolute bottom-0 left-0 right-0 w-72 p-4 border-t border-slate-200 bg-white">
+                    <button
+                        onClick={handleLogout}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-sm text-red-600 hover:bg-red-50 transition-all"
+                    >
+                        <LogOut className="w-5 h-5" strokeWidth={2.5} />
+                        <span>로그아웃</span>
+                    </button>
+                </div>
             </aside>
 
             {/* Main Content */}
