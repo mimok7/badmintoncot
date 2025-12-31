@@ -48,6 +48,71 @@ QR 코드 기반 로그인 시스템을 갖춘 실시간 배드민턴 코트 예
 
 - **Frontend**: Next.js 14, React 18, TypeScript
 - **Styling**: Tailwind CSS
+- **Database**: Supabase (PostgreSQL)
+- **Real-time**: Supabase Realtime
+- **Icons**: Lucide React
+- **QR Code**: qrcode.react
+
+## 📦 설치 방법
+
+### 1. 저장소 클론
+```bash
+git clone https://github.com/mimok7/badmintoncot.git
+cd badmintoncot
+```
+
+### 2. 패키지 설치
+```bash
+npm install
+```
+
+### 3. 환경 변수 설정
+`.env.local` 파일을 생성하고 다음 내용을 추가하세요:
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+NEXT_PUBLIC_QR_SESSION_ID=qr_entrance_fixed_2024
+```
+
+### 4. Supabase 데이터베이스 설정
+
+#### 4-1. Supabase 프로젝트 생성
+1. [Supabase](https://supabase.com) 에서 프로젝트 생성
+2. Project Settings → API에서 `URL`과 `anon public` 키 복사
+3. `.env.local`에 추가
+
+#### 4-2. 데이터베이스 스키마 생성
+Supabase Dashboard → SQL Editor에서 다음 파일들을 순서대로 실행:
+
+1. **기본 스키마 생성**: `supabase/schema.sql`
+2. **추가 기능**: `supabase/schema_additions.sql`
+3. **RLS 정책 설정**: `supabase/rls_policies.sql` ⭐ **중요!**
+
+> ⚠️ **중요**: `rls_policies.sql`을 반드시 실행해야 합니다. 
+> 이 파일이 없으면 익명 사용자가 데이터베이스에 접근할 수 없어 오류가 발생합니다.
+
+### 5. 개발 서버 실행
+```bash
+npm run dev
+```
+
+브라우저에서 `http://localhost:3000` 접속
+
+## 🚀 배포 (Vercel)
+
+### 1. Vercel에 배포
+```bash
+vercel
+```
+
+### 2. 환경 변수 설정
+Vercel Dashboard → Settings → Environment Variables에 추가:
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_QR_SESSION_ID`
+
+### 3. 재배포
+환경 변수 추가 후 자동으로 재배포됩니다.
 - **Database**: Supabase
 - **QR Code**: qrcode.react
 - **Icons**: Lucide React
