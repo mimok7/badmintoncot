@@ -65,12 +65,28 @@ export default function AdminPage() {
         rules: '• 코트 이용 시간은 2시간으로 제한됩니다.\n• 4명이 모여야 코트 사용이 가능합니다.\n• 안전을 위해 운동화를 착용해주세요.\n• 코트 내 음식물 반입을 금지합니다.'
     });
 
+    const handleSaveSettings = () => {
+        // localStorage에 저장
+        localStorage.setItem('badminton_settings', JSON.stringify(settings));
+        alert('설정이 저장되었습니다!');
+    };
+
     useEffect(() => {
         const host = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
         setBaseUrl(host);
         generateQRWithFixedSession(host);
         fetchCourts();
         fetchActiveSessions();
+
+        // localStorage에서 설정 불러오기
+        const savedSettings = localStorage.getItem('badminton_settings');
+        if (savedSettings) {
+            try {
+                setSettings(JSON.parse(savedSettings));
+            } catch (e) {
+                console.error('설정 불러오기 오류:', e);
+            }
+        }
 
         // 실시간 업데이트 구독
         const channel = supabase
@@ -308,15 +324,6 @@ export default function AdminPage() {
                         })}
                     </ul>
                 </nav>
-
-                <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-200 bg-slate-50">
-                    <div className="text-center">
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                            Badminton Court System
-                        </p>
-                        <p className="text-xs text-slate-400 mt-1">v1.0.0</p>
-                    </div>
-                </div>
             </aside>
 
             {/* Main Content */}
@@ -607,7 +614,10 @@ export default function AdminPage() {
                                 />
                             </div>
 
-                            <button className="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 text-white py-4 rounded-xl font-bold hover:from-indigo-700 hover:to-indigo-800 transition-all shadow-xl shadow-indigo-300/40 hover:shadow-indigo-400/50 active:scale-[0.98]">
+                            <button 
+                                onClick={handleSaveSettings}
+                                className="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 text-white py-4 rounded-xl font-bold hover:from-indigo-700 hover:to-indigo-800 transition-all shadow-xl shadow-indigo-300/40 hover:shadow-indigo-400/50 active:scale-[0.98]"
+                            >
                                 설정 저장
                             </button>
                         </div>
