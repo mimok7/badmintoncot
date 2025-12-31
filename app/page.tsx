@@ -107,6 +107,15 @@ export default function Home() {
           .maybeSingle();
 
         if (sessionData) setSession(sessionData);
+        
+        // 예약 상태 확인
+        const { data: reservationData } = await supabase
+          .from('reservations')
+          .select('court_id')
+          .eq('user_id', savedMemberId)
+          .maybeSingle();
+        
+        if (reservationData) setMyReservedCourtId(reservationData.court_id);
       } else {
         localStorage.removeItem('badminton_member_id');
       }
@@ -121,7 +130,7 @@ export default function Home() {
       .from('reservations')
       .select('court_id')
       .eq('user_id', member.id)
-      .single();
+      .maybeSingle();
     
     setMyReservedCourtId(data?.court_id ?? null);
   };
@@ -206,6 +215,12 @@ export default function Home() {
       return;
     }
 
+    // 이미 예약이 있는지 확인
+    if (myReservedCourtId !== null) {
+      alert('이미 다른 코트에 대기 중입니다. 먼저 취소해주세요.');
+      return;
+    }
+
     const { error } = await supabase
       .from('reservations')
       .insert({ court_id: courtId, user_id: member.id });
@@ -215,6 +230,8 @@ export default function Home() {
       console.error('오류 상세 JSON:', JSON.stringify(error, null, 2));
       if (error.code === '23505') {
         alert('이미 이 코트에 대기 중입니다.');
+        // 예약 상태 다시 확인
+        await checkMyReservation();
       } else {
         alert(`예약 중 오류: code=${error.code} message=${error.message}`);
       }
