@@ -123,6 +123,15 @@ function ScanContent() {
                     <p className="text-slate-500 mb-8 font-medium leading-relaxed">
                         올바른 QR 코드를 스캔해주세요.
                     </p>
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6 text-left">
+                        <p className="text-xs font-bold text-slate-700 mb-2">디버그 정보:</p>
+                        <p className="text-xs text-slate-600 font-mono break-all">
+                            스캔된 세션: {searchParams.get('session') || '없음'}
+                        </p>
+                        <p className="text-xs text-slate-600 font-mono break-all mt-1">
+                            예상 세션: {process.env.NEXT_PUBLIC_QR_SESSION_ID || 'qr_entrance_fixed_2024'}
+                        </p>
+                    </div>
                     <button
                         onClick={() => router.push('/')}
                         className="w-full bg-gradient-to-r from-slate-600 to-slate-700 text-white py-4 rounded-[1.5rem] font-bold hover:from-slate-700 hover:to-slate-800 transition-all shadow-lg"
