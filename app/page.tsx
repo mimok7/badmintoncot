@@ -25,6 +25,10 @@ interface Court {
   status: string;
   current_users_count: number;
   waitingMembers?: string[];
+  waitingTeams?: {
+    teamNumber: number;
+    members: string[];
+  }[];
 }
 
 interface EntrySession {
@@ -41,6 +45,8 @@ export default function Home() {
   const [timeLeft, setTimeLeft] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [myReservedCourtId, setMyReservedCourtId] = useState<number | null>(null);
+  const [myTeamNumber, setMyTeamNumber] = useState<number | null>(null);
+  const [selectedTeam, setSelectedTeam] = useState<{courtId: number, teamNumber: number} | null>(null);
 
   useEffect(() => {
     checkUser();
@@ -111,11 +117,14 @@ export default function Home() {
         // 예약 상태 확인
         const { data: reservationData } = await supabase
           .from('reservations')
-          .select('court_id')
+          .select('court_id, team_number')
           .eq('user_id', savedMemberId)
           .maybeSingle();
         
-        if (reservationData) setMyReservedCourtId(reservationData.court_id);
+        if (reservationData) {
+          setMyReservedCourtId(reservationData.court_id);
+          setMyTeamNumber(reservationData.team_number);
+        }
       } else {
         localStorage.removeItem('badminton_member_id');
       }
@@ -128,28 +137,53 @@ export default function Home() {
     
     const { data } = await supabase
       .from('reservations')
-      .select('court_id')
+      .select('court_id, team_number')
       .eq('user_id', member.id)
       .maybeSingle();
     
     setMyReservedCourtId(data?.court_id ?? null);
+    setMyTeamNumber(data?.team_number ?? null);
   };
 
   const fetchCourts = async () => {
     const { data: courtsData } = await supabase.from('courts').select('*').order('id', { ascending: true });
     const { data: resData } = await supabase
       .from('reservations')
-      .select('court_id, user_id, members(nickname)');
+      .select('court_id, user_id, team_number, members(nickname)')
+      .order('team_number', { ascending: true });
 
     if (courtsData) {
-      const updatedCourts = courtsData.map(court => ({
-        ...court,
-        current_users_count: resData?.filter(r => r.court_id === court.id)?.length ?? 0,
-        waitingMembers: resData?.filter(r => r.court_id === court.id).map(r => {
+      const updatedCourts = courtsData.map(court => {
+        const courtReservations = resData?.filter(r => r.court_id === court.id) ?? [];
+        
+        // 팀별로 그룹핑
+        const teamsMap = new Map<number, string[]>();
+        courtReservations.forEach(r => {
           const member = r.members as any;
-          return member?.nickname || '알 수 없음';
-        }) ?? []
-      }));
+          const nickname = member?.nickname || '알 수 없음';
+          const teamNum = r.team_number || 1;
+          
+          if (!teamsMap.has(teamNum)) {
+            teamsMap.set(teamNum, []);
+          }
+          teamsMap.get(teamNum)!.push(nickname);
+        });
+        
+        // Map을 배열로 변환
+        const waitingTeams = Array.from(teamsMap.entries())
+          .map(([teamNumber, members]) => ({ teamNumber, members }))
+          .sort((a, b) => a.teamNumber - b.teamNumber);
+        
+        return {
+          ...court,
+          current_users_count: courtReservations.length,
+          waitingMembers: courtReservations.map(r => {
+            const member = r.members as any;
+            return member?.nickname || '알 수 없음';
+          }),
+          waitingTeams
+        };
+      });
       setCourts(updatedCourts);
     }
     
@@ -209,7 +243,7 @@ export default function Home() {
     if (data) setSession(data);
   };
 
-  const handleReserve = async (courtId: number) => {
+  const handleReserve = async (courtId: number, teamNumber: number) => {
     if (!member || !session) {
       alert('입장 처리가 필요합니다.');
       return;
@@ -223,7 +257,7 @@ export default function Home() {
 
     const { error } = await supabase
       .from('reservations')
-      .insert({ court_id: courtId, user_id: member.id });
+      .insert({ court_id: courtId, user_id: member.id, team_number: teamNumber });
 
     if (error) {
       console.error('예약 오류:', error);
@@ -232,12 +266,16 @@ export default function Home() {
         alert('이미 이 코트에 대기 중입니다.');
         // 예약 상태 다시 확인
         await checkMyReservation();
+      } else if (error.message.includes('4명으로 마감')) {
+        alert('해당 대기팀은 이미 4명으로 마감되었습니다. 다른 팀을 선택해주세요.');
       } else {
-        alert(`예약 중 오류: code=${error.code} message=${error.message}`);
+        alert(`예약 중 오류: ${error.message}`);
       }
     } else {
-      alert('예약이 완료되었습니다!');
+      alert(`대기${teamNumber}팀 신청이 완료되었습니다!`);
       setMyReservedCourtId(courtId);
+      setMyTeamNumber(teamNumber);
+      setSelectedTeam(null);
       fetchCourts();
     }
   };
@@ -260,6 +298,7 @@ export default function Home() {
     } else {
       alert('예약이 취소되었습니다.');
       setMyReservedCourtId(null);
+      setMyTeamNumber(null);
       fetchCourts();
     }
   };
@@ -405,26 +444,41 @@ export default function Home() {
                         <div className="w-7 h-7 bg-indigo-100 rounded-lg flex items-center justify-center">
                           <Users className="w-4 h-4 text-indigo-600" strokeWidth={2.5} />
                         </div>
-                        <span className="text-xs font-bold text-slate-600">대기 인원</span>
+                        <span className="text-xs font-bold text-slate-600">대기팀 현황</span>
                       </div>
-                      <span className="text-xl font-black bg-gradient-to-r from-indigo-600 to-indigo-700 bg-clip-text text-transparent">{court.current_users_count}<span className="text-slate-300 text-sm font-semibold"> / 4</span></span>
                     </div>
-                    <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden shadow-inner mb-3">
-                      <div
-                        className={`h-full transition-all duration-1000 ease-out rounded-full shadow-sm ${court.current_users_count >= 4 ? 'bg-gradient-to-r from-rose-500 to-pink-500' : 'bg-gradient-to-r from-indigo-500 to-indigo-600'
-                          }`}
-                        style={{ width: `${(court.current_users_count / 4) * 100}%` }}
-                      ></div>
-                    </div>
-                    {court.waitingMembers && court.waitingMembers.length > 0 && (
-                      <div className="mt-3 space-y-1.5">
-                        {court.waitingMembers.map((nickname, idx) => (
-                          <div key={idx} className="flex items-center gap-2 text-xs text-slate-600">
-                            <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></div>
-                            <span className="font-medium">{nickname}</span>
+                    
+                    {/* 대기팀 목록 */}
+                    {court.waitingTeams && court.waitingTeams.length > 0 ? (
+                      <div className="space-y-3">
+                        {court.waitingTeams.map((team) => (
+                          <div 
+                            key={team.teamNumber} 
+                            className={`p-3 rounded-xl border-2 transition-all ${
+                              myReservedCourtId === court.id && myTeamNumber === team.teamNumber
+                                ? 'bg-indigo-50 border-indigo-300'
+                                : 'bg-white border-slate-200'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-xs font-bold text-indigo-600">대기 {team.teamNumber}</span>
+                              <span className="text-xs font-semibold text-slate-500">{team.members.length}/4명</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {team.members.map((nickname, idx) => (
+                                <span 
+                                  key={idx} 
+                                  className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded-lg text-[10px] font-medium"
+                                >
+                                  {nickname}
+                                </span>
+                              ))}
+                            </div>
                           </div>
                         ))}
                       </div>
+                    ) : (
+                      <p className="text-xs text-slate-400 text-center py-4">대기 중인 팀이 없습니다</p>
                     )}
                   </div>
 
@@ -433,28 +487,62 @@ export default function Home() {
                       onClick={handleCancelReservation}
                       className="w-full py-4 bg-gradient-to-r from-rose-600 to-rose-700 text-white text-sm rounded-[1.25rem] font-bold hover:from-rose-700 hover:to-rose-800 transition-all shadow-lg shadow-rose-500/30 flex items-center justify-center gap-2 group/btn active:scale-[0.98]"
                     >
-                      신청 취소
+                      신청 취소 (대기 {myTeamNumber})
                       <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" strokeWidth={2.5} />
                     </button>
                   ) : (
-                    <button
-                      onClick={() => handleReserve(court.id)}
-                      className="w-full py-4 bg-gradient-to-r from-slate-900 to-slate-800 text-white text-sm rounded-[1.25rem] font-bold hover:from-indigo-600 hover:to-indigo-700 transition-all shadow-lg shadow-slate-900/20 hover:shadow-indigo-500/30 disabled:opacity-30 disabled:grayscale disabled:cursor-not-allowed disabled:hover:from-slate-900 disabled:hover:to-slate-800 flex items-center justify-center gap-2 group/btn active:scale-[0.98]"
-                      disabled={!session || court.current_users_count >= 4 || myReservedCourtId !== null}
-                    >
-                      {!session ? (
-                        <>입장 후 신청 가능</>
-                      ) : court.current_users_count >= 4 ? (
-                        <>대기 마감</>
-                      ) : myReservedCourtId !== null ? (
-                        <>다른 코트 대기 중</>
-                      ) : (
-                        <>
-                          대기 신청하기
-                          <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" strokeWidth={2.5} />
-                        </>
+                    <div className="space-y-3">
+                      {/* 대기팀 선택 버튼들 */}
+                      <div className="grid grid-cols-2 gap-2">
+                        {[1, 2, 3].map((teamNum) => {
+                          const team = court.waitingTeams?.find(t => t.teamNumber === teamNum);
+                          const isFull = team && team.members.length >= 4;
+                          const nextAvailableTeam = court.waitingTeams?.length 
+                            ? Math.max(...court.waitingTeams.map(t => t.teamNumber)) + 1 
+                            : 1;
+                          
+                          return (
+                            <button
+                              key={teamNum}
+                              onClick={() => handleReserve(court.id, teamNum)}
+                              className={`py-3 px-4 text-xs rounded-xl font-bold transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 ${
+                                isFull
+                                  ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                                  : !session || myReservedCourtId !== null
+                                  ? 'bg-slate-300 text-slate-600'
+                                  : 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white hover:from-indigo-700 hover:to-indigo-800 shadow-indigo-200/50'
+                              }`}
+                              disabled={!session || myReservedCourtId !== null || isFull}
+                            >
+                              대기 {teamNum}
+                              {team && <span className="text-[10px]">({team.members.length}/4)</span>}
+                              {isFull && <span className="text-[10px]">마감</span>}
+                            </button>
+                          );
+                        })}
+                        
+                        {/* 새 대기팀 생성 버튼 */}
+                        <button
+                          onClick={() => {
+                            const nextTeam = court.waitingTeams?.length 
+                              ? Math.max(...court.waitingTeams.map(t => t.teamNumber)) + 1 
+                              : 1;
+                            handleReserve(court.id, nextTeam);
+                          }}
+                          className="py-3 px-4 text-xs rounded-xl font-bold transition-all shadow-md bg-gradient-to-r from-emerald-600 to-emerald-700 text-white hover:from-emerald-700 hover:to-emerald-800 shadow-emerald-200/50 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 col-span-2"
+                          disabled={!session || myReservedCourtId !== null}
+                        >
+                          + 새 대기팀 만들기
+                        </button>
+                      </div>
+                      
+                      {!session && (
+                        <p className="text-xs text-slate-500 text-center">입장 후 신청 가능</p>
                       )}
-                    </button>
+                      {myReservedCourtId !== null && (
+                        <p className="text-xs text-slate-500 text-center">다른 코트 대기 중</p>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
