@@ -19,16 +19,23 @@ function ScanContent() {
         const session = searchParams.get('session');
         const fixedSessionId = process.env.NEXT_PUBLIC_QR_SESSION_ID || 'qr_entrance_fixed_2024';
 
+        console.log('스캔된 세션:', session);
+        console.log('예상 세션:', fixedSessionId);
+
         if (!session) {
+            console.error('세션 파라미터가 없습니다');
             setStatus('error');
             return;
         }
 
         // 고정 세션 ID와 비교하여 검증
         if (session !== fixedSessionId) {
+            console.error('세션 ID 불일치:', { session, fixedSessionId });
             setStatus('error');
             return;
         }
+
+        console.log('QR 검증 성공, 계정 생성 시작');
 
         try {
             // 1. 기존 회원 확인
