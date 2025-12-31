@@ -91,7 +91,7 @@ export default function Home() {
         const { data: sessionData } = await supabase
           .from('entry_sessions')
           .select('*')
-          .eq('member_id', savedMemberId)
+          .eq('user_id', savedMemberId)
           .eq('is_active', true)
           .gt('expires_at', new Date().toISOString())
           .order('entry_at', { ascending: false })
@@ -139,10 +139,11 @@ export default function Home() {
       localStorage.setItem('badminton_member_id', data.id);
       setMember(data);
       
-      // 자동으로 입장 처리
+      // 자동으로 입장 처리 (id 직접 생성)
+      const entryId = crypto.randomUUID();
       const { data: entryData } = await supabase
         .from('entry_sessions')
-        .insert([{ member_id: data.id }])
+        .insert({ id: entryId, user_id: data.id })
         .select()
         .single();
       
@@ -152,9 +153,10 @@ export default function Home() {
 
   const handleEntry = async () => {
     if (!member) return;
+    const entryId = crypto.randomUUID();
     const { data, error } = await supabase
       .from('entry_sessions')
-      .insert([{ member_id: member.id }])
+      .insert({ id: entryId, user_id: member.id })
       .select()
       .single();
 
