@@ -101,7 +101,6 @@ export default function AdminPage() {
             setIsAuthenticated(true);
             setUserEmail(session.user.email || '');
         } catch (error) {
-            console.error('인증 확인 오류:', error);
             router.push('/admin/login');
         } finally {
             setIsLoading(false);
@@ -113,7 +112,7 @@ export default function AdminPage() {
             await supabase.auth.signOut();
             router.push('/admin/login');
         } catch (error) {
-            console.error('로그아웃 오류:', error);
+            // 로그아웃 오류 무시
         }
     };
 
@@ -137,7 +136,6 @@ export default function AdminPage() {
 
             alert('설정이 저장되었습니다!');
         } catch (error) {
-            console.error('설정 저장 오류:', error);
             alert('설정 저장 중 오류가 발생했습니다.');
         }
     };
@@ -221,7 +219,7 @@ export default function AdminPage() {
                 });
             }
         } catch (error) {
-            console.error('설정 불러오기 오류:', error);
+            // 설정 불러오기 오류 무시
         }
     };
 

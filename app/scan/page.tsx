@@ -21,23 +21,16 @@ function ScanContent() {
         const session = searchParams.get('session');
         const fixedSessionId = process.env.NEXT_PUBLIC_QR_SESSION_ID || 'qr_entrance_fixed_2024';
 
-        console.log('스캔된 세션:', session);
-        console.log('예상 세션:', fixedSessionId);
-
         if (!session) {
-            console.error('세션 파라미터가 없습니다');
             setStatus('error');
             return;
         }
 
         // 고정 세션 ID와 비교하여 검증
         if (session !== fixedSessionId) {
-            console.error('세션 ID 불일치:', { session, fixedSessionId });
             setStatus('error');
             return;
         }
-
-        console.log('QR 검증 성공');
 
         // 기존 회원 확인 (localStorage + DB 검증)
         const savedMemberId = localStorage.getItem('badminton_member_id');
@@ -82,27 +75,23 @@ function ScanContent() {
                 .single();
 
             if (memberError) {
-                console.error('회원 생성 오류:', memberError);
                 setMessage(`회원 생성 실패: ${memberError.message}`);
                 setStatus('error');
                 return;
             }
 
-            console.log('생성된 회원:', memberData);
             localStorage.setItem('badminton_member_id', memberData.id);
 
             // 입장 처리
             await processEntry(memberData.id);
 
         } catch (error) {
-            console.error('이름 처리 오류:', error);
             setStatus('error');
         }
     };
 
     const processEntry = async (memberId: string) => {
         setMessage('입장 처리 중...');
-        console.log('입장 처리 시도, user_id:', memberId);
 
         try {
             // UUID 직접 생성 (DB에 기본값이 없으므로)
@@ -118,14 +107,10 @@ function ScanContent() {
                 .single();
 
             if (entryError) {
-                console.error('입장 처리 오류:', entryError);
-                console.error('오류 상세:', JSON.stringify(entryError, null, 2));
                 setMessage(`입장 처리 실패: ${entryError.message}`);
                 setStatus('error');
                 return;
             }
-
-            console.log('입장 처리 성공:', entryData);
 
             // 성공 - 메인 페이지로 이동
             setStatus('success');
@@ -134,7 +119,6 @@ function ScanContent() {
             }, 2000);
 
         } catch (error) {
-            console.error('입장 처리 오류:', error);
             setStatus('error');
         }
     };

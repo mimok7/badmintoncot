@@ -34,7 +34,6 @@ export default function AdminLoginPage() {
                 router.push('/admin');
             }
         } catch (error: any) {
-            console.error('로그인 오류:', error);
             setError(error.message || '로그인에 실패했습니다.');
         } finally {
             setIsLoading(false);
@@ -78,7 +77,6 @@ export default function AdminLoginPage() {
                 }, 3000);
             }
         } catch (error: any) {
-            console.error('회원가입 오류:', error);
             setError(error.message || '회원가입에 실패했습니다.');
         } finally {
             setIsLoading(false);

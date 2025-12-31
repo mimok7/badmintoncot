@@ -113,8 +113,6 @@ export default function Home() {
           const newStatus = payload.new.status;
           const oldStatus = payload.old.status;
           
-          console.log('예야 상태 변경:', { oldStatus, newStatus });
-          
           // 상태가 playing으로 변경되면 알림
           if (oldStatus !== 'playing' && newStatus === 'playing') {
             const courtId = payload.new.court_id;
@@ -293,7 +291,6 @@ export default function Home() {
 
     if (error) {
       alert('등록 중 오류가 발생했습니다.');
-      console.error(error);
       return;
     }
 
@@ -324,7 +321,6 @@ export default function Home() {
 
     if (error) {
       alert('입장 처리 중 오류가 발생했습니다.');
-      console.error(error);
       return;
     }
 
@@ -348,8 +344,6 @@ export default function Home() {
       .insert({ court_id: courtId, user_id: member.id, team_number: teamNumber });
 
     if (error) {
-      console.error('예약 오류:', error);
-      console.error('오류 상세 JSON:', JSON.stringify(error, null, 2));
       if (error.code === '23505') {
         alert('이미 이 코트에 대기 중입니다.');
         // 예약 상태 다시 확인
@@ -381,7 +375,6 @@ export default function Home() {
       .eq('court_id', myReservedCourtId);
 
     if (error) {
-      console.error('예약 취소 오류:', error);
       alert('예약 취소 중 오류가 발생했습니다.');
     } else {
       alert('예약이 취소되었습니다.');
@@ -404,7 +397,6 @@ export default function Home() {
       });
 
       if (error) {
-        console.error('경기 종료 오류:', error);
         alert('경기 종료 중 오류가 발생했습니다.');
         return;
       }
@@ -418,7 +410,6 @@ export default function Home() {
         alert(data?.message || '경기 종료에 실패했습니다.');
       }
     } catch (error) {
-      console.error('경기 종료 처리 오류:', error);
       alert('경기 종료 처리 중 오류가 발생했습니다.');
     }
   };
