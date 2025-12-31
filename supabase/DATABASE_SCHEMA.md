@@ -47,15 +47,24 @@ const { data } = await supabase
 > ⚠️ **중요**: 
 > - 실제 DB에서는 `user_id` 컬럼을 사용합니다 (schema.sql의 `member_id`와 다름)
 > - `id` 컬럼에 기본값이 없으므로 **반드시 직접 UUID를 생성**해야 합니다
+> - `user_id`는 `members` 테이블의 `id`를 참조합니다 (외래 키)
 
 | 컬럼명 | 타입 | 기본값 | 설명 |
 |--------|------|--------|------|
 | `id` | UUID | ⚠️ **없음** | PK, 직접 생성 필요 |
-| `user_id` | UUID | - | FK → members.id |
+| `user_id` | UUID | - | FK → **members.id** |
 | `entry_at` | TIMESTAMPTZ | `NOW()` | 입장 시간 |
 | `expires_at` | TIMESTAMPTZ | `NOW() + 2시간` | 만료 시간 |
 | `is_active` | BOOLEAN | `true` | 활성 상태 |
 | `qr_session_id` | VARCHAR | - | 사용된 QR 세션 ID |
+
+**외래 키 설정 (Supabase에서 실행 필요):**
+```sql
+-- 기존 외래 키가 users 테이블을 참조하는 경우 수정
+ALTER TABLE entry_sessions DROP CONSTRAINT IF EXISTS entry_sessions_user_id_fkey;
+ALTER TABLE entry_sessions ADD CONSTRAINT entry_sessions_user_id_fkey 
+FOREIGN KEY (user_id) REFERENCES members(id) ON DELETE CASCADE;
+```
 
 **사용 예시:**
 ```typescript
