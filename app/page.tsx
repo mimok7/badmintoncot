@@ -50,13 +50,29 @@ export default function Home() {
   const [myTeamNumber, setMyTeamNumber] = useState<number | null>(null);
   const [selectedTeam, setSelectedTeam] = useState<{courtId: number, teamNumber: number} | null>(null);
   const [myCurrentStatus, setMyCurrentStatus] = useState<'waiting' | 'confirmed' | 'playing' | null>(null);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
 
   // 브라우저 알림 권한 요청
   useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
+    if ('Notification' in window) {
+      setNotificationPermission(Notification.permission);
+      if (Notification.permission === 'default') {
+        Notification.requestPermission().then(permission => {
+          setNotificationPermission(permission);
+        });
+      }
     }
   }, []);
+
+  const handleRequestNotification = async () => {
+    if ('Notification' in window) {
+      const permission = await Notification.requestPermission();
+      setNotificationPermission(permission);
+      if (permission === 'granted') {
+        alert('알림이 허용되었습니다! 경기 시작 시 알림을 받을 수 있습니다.');
+      }
+    }
+  };
 
   useEffect(() => {
     checkUser();
@@ -503,8 +519,36 @@ export default function Home() {
 
       <div className="max-w-7xl mx-auto px-6">
         <header className="flex flex-col md:flex-row justify-between items-end mb-12 gap-8">
-          <div>
-            <h2 className="text-5xl font-black bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 bg-clip-text text-transparent mb-3 tracking-tight leading-tight">코트 현황판</h2>
+          <div className="flex-1">
+            <div className="flex items-center gap-4 mb-3">
+              <h2 className="text-5xl font-black bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 bg-clip-text text-transparent tracking-tight leading-tight">코트 현황판</h2>
+              
+              {/* 알림 허용 버튼 */}
+              {'Notification' in window && notificationPermission !== 'granted' && (
+                <button
+                  onClick={handleRequestNotification}
+                  className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-bold rounded-xl shadow-lg shadow-amber-200/50 transition-all flex items-center gap-2 animate-pulse"
+                  title="경기 시작 알림 받기"
+                >
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
+                  </svg>
+                  알림 허용
+                </button>
+              )}
+              
+              {'Notification' in window && notificationPermission === 'granted' && (
+                <div className="px-4 py-2 bg-gradient-to-r from-green-50 to-emerald-50 text-green-700 text-xs font-bold rounded-xl border border-green-200 flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
+                  </svg>
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  알림 활성화
+                </div>
+              )}
+            </div>
             <p className="text-slate-500 font-semibold flex items-center gap-2.5 text-base">
               <div className="relative flex h-3 w-3">
                 <div className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></div>
