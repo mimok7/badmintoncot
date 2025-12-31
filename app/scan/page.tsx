@@ -3,13 +3,19 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { QrCode, CheckCircle, Loader2 } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 function ScanContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const [status, setStatus] = useState<'validating' | 'success' | 'error'>('validating');
+    const [message, setMessage] = useState('QR 코드를 확인하는 중...');
 
     useEffect(() => {
+        handleQRScan();
+    }, [searchParams, router]);
+
+    const handleQRScan = async () => {
         const session = searchParams.get('session');
         const fixedSessionId = process.env.NEXT_PUBLIC_QR_SESSION_ID || 'qr_entrance_fixed_2024';
 
@@ -19,20 +25,65 @@ function ScanContent() {
         }
 
         // 고정 세션 ID와 비교하여 검증
-        if (session === fixedSessionId) {
-            // 유효한 QR 코드 - localStorage에 표시하고 메인 페이지로 이동
-            localStorage.setItem('qr_verified', 'true');
-            setStatus('success');
+        if (session !== fixedSessionId) {
+            setStatus('error');
+            return;
+        }
 
-            // 2초 후 메인 페이지로 리다이렉트
+        try {
+            // 1. 기존 회원 확인
+            const savedMemberId = localStorage.getItem('badminton_member_id');
+            let memberId = savedMemberId;
+
+            if (!savedMemberId) {
+                setMessage('게스트 계정을 생성하는 중...');
+                
+                // 2. 임의의 닉네임 생성 (Guest_랜덤번호)
+                const randomNum = Math.floor(Math.random() * 100000);
+                const guestNickname = `Guest_${randomNum}`;
+
+                // 3. 회원 자동 생성
+                const { data: memberData, error: memberError } = await supabase
+                    .from('members')
+                    .insert([{ nickname: guestNickname }])
+                    .select()
+                    .single();
+
+                if (memberError) {
+                    console.error('회원 생성 오류:', memberError);
+                    setStatus('error');
+                    return;
+                }
+
+                memberId = memberData.id;
+                localStorage.setItem('badminton_member_id', memberId);
+            }
+
+            // 4. 입장 처리 (entry_sessions)
+            setMessage('입장 처리 중...');
+            const { data: entryData, error: entryError } = await supabase
+                .from('entry_sessions')
+                .insert([{ member_id: memberId }])
+                .select()
+                .single();
+
+            if (entryError) {
+                console.error('입장 처리 오류:', entryError);
+                setStatus('error');
+                return;
+            }
+
+            // 5. 성공 - 메인 페이지로 이동
+            setStatus('success');
             setTimeout(() => {
-                localStorage.removeItem('qr_verified');
                 router.push('/');
             }, 2000);
-        } else {
+
+        } catch (error) {
+            console.error('QR 스캔 처리 오류:', error);
             setStatus('error');
         }
-    }, [searchParams, router]);
+    };
 
     if (status === 'validating') {
         return (
@@ -42,10 +93,10 @@ function ScanContent() {
                         <Loader2 className="text-indigo-600 w-10 h-10 animate-spin" strokeWidth={2.5} />
                     </div>
                     <h1 className="text-3xl font-black mb-3 text-center bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent tracking-tight">
-                        QR 코드 확인 중
+                        처리 중
                     </h1>
                     <p className="text-slate-500 font-medium leading-relaxed">
-                        잠시만 기다려주세요...
+                        {message}
                     </p>
                 </div>
             </div>
@@ -83,10 +134,10 @@ function ScanContent() {
                     <CheckCircle className="text-green-600 w-10 h-10" strokeWidth={2.5} />
                 </div>
                 <h1 className="text-3xl font-black mb-3 text-center bg-gradient-to-r from-green-900 to-green-700 bg-clip-text text-transparent tracking-tight">
-                    QR 인증 완료!
+                    입장 완료!
                 </h1>
                 <p className="text-slate-500 mb-2 font-medium leading-relaxed">
-                    잠시 후 로그인 페이지로 이동합니다.
+                    코트 예약 화면으로 이동합니다.
                 </p>
             </div>
         </div>

@@ -78,9 +78,6 @@ export default function Home() {
   }, [session]);
 
   const checkUser = async () => {
-    // QR 검증 확인
-    const qrVerified = localStorage.getItem('qr_verified');
-
     const savedMemberId = localStorage.getItem('badminton_member_id');
     if (savedMemberId) {
       const { data: memberData } = await supabase
@@ -140,8 +137,16 @@ export default function Home() {
 
     if (data) {
       localStorage.setItem('badminton_member_id', data.id);
-      localStorage.removeItem('qr_session_id');
       setMember(data);
+      
+      // 자동으로 입장 처리
+      const { data: entryData } = await supabase
+        .from('entry_sessions')
+        .insert([{ member_id: data.id }])
+        .select()
+        .single();
+      
+      if (entryData) setSession(entryData);
     }
   };
 
@@ -191,12 +196,9 @@ export default function Home() {
   );
 
   if (!member) {
-    // QR 검증이 없으면 QR 스캔 안내 표시
-    const qrVerified = localStorage.getItem('qr_verified');
-
-    if (!qrVerified) {
-      return (
-        <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 p-6">
+    // QR 스캔 안내 표시
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 p-6">
           <div className="bg-white/95 backdrop-blur-xl p-12 rounded-[3rem] shadow-2xl w-full max-w-md border border-white/60 text-center">
             <div className="w-24 h-24 bg-gradient-to-br from-indigo-100 to-indigo-200 rounded-[2rem] flex items-center justify-center mb-8 mx-auto animate-pulse">
               <QrCode className="text-indigo-600 w-12 h-12" strokeWidth={2.5} />
@@ -229,40 +231,6 @@ export default function Home() {
         </div>
       );
     }
-
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-indigo-50 via-white to-slate-50/50 p-6">
-        <div className="bg-white/80 backdrop-blur-xl p-12 rounded-[3rem] shadow-2xl shadow-indigo-200/30 w-full max-w-md border border-white/60">
-          <div className="w-20 h-20 bg-gradient-to-br from-indigo-600 to-indigo-700 rounded-[1.5rem] flex items-center justify-center mb-8 mx-auto shadow-xl shadow-indigo-300/50 rotate-3 hover:rotate-0 transition-transform duration-300">
-            <QrCode className="text-white w-10 h-10" strokeWidth={2.5} />
-          </div>
-          <h1 className="text-4xl font-black mb-3 text-center bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent tracking-tight">반갑습니다!</h1>
-          <p className="text-slate-500 mb-12 text-center font-medium leading-relaxed">배드민턴 코트 시스템 이용을 위해<br />사용하실 닉네임을 설정해주세요.</p>
-
-          <form onSubmit={handleRegister} className="space-y-5">
-            <div className="relative group">
-              <User className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5 group-focus-within:text-indigo-600 transition-colors" />
-              <input
-                type="text"
-                value={nickname}
-                onChange={(e) => setNickname(e.target.value)}
-                placeholder="사용할 닉네임 입력"
-                className="w-full pl-14 pr-5 py-5 bg-slate-50/80 border border-slate-200/50 rounded-[1.5rem] focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-300 outline-none transition-all font-semibold text-slate-800 placeholder:text-slate-400"
-                required
-              />
-            </div>
-            <button
-              type="submit"
-              className="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 text-white py-5 rounded-[1.5rem] font-bold hover:from-indigo-700 hover:to-indigo-800 transition-all shadow-xl shadow-indigo-300/40 hover:shadow-indigo-400/50 flex items-center justify-center gap-2 group active:scale-[0.98]"
-            >
-              시작하기
-              <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" strokeWidth={3} />
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/20 pb-24">
@@ -312,7 +280,7 @@ export default function Home() {
           </div>
 
           <div className="w-full md:w-auto">
-            {session ? (
+            {session && (
               <div className="bg-white/80 backdrop-blur-sm border border-indigo-200/60 p-5 rounded-[1.75rem] flex items-center gap-4 shadow-lg shadow-indigo-100/50">
                 <div className="w-14 h-14 bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-[1.25rem] flex items-center justify-center">
                   <Clock className="text-indigo-600 w-7 h-7" strokeWidth={2.5} />
@@ -322,14 +290,6 @@ export default function Home() {
                   <p className="text-3xl font-mono font-black bg-gradient-to-r from-indigo-600 to-indigo-700 bg-clip-text text-transparent leading-none">{timeLeft}</p>
                 </div>
               </div>
-            ) : (
-              <button
-                onClick={handleEntry}
-                className="w-full md:w-auto bg-gradient-to-r from-indigo-600 to-indigo-700 text-white px-12 py-5 rounded-[1.75rem] font-bold hover:from-indigo-700 hover:to-indigo-800 shadow-xl shadow-indigo-300/40 hover:shadow-indigo-400/50 transition-all transform hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-3"
-              >
-                <QrCode className="w-6 h-6" strokeWidth={2.5} />
-                QR 입장하기
-              </button>
             )}
           </div>
         </header>
@@ -418,8 +378,8 @@ export default function Home() {
               <div className="flex gap-5 group">
                 <div className="flex-shrink-0 w-11 h-11 bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-[1rem] flex items-center justify-center text-indigo-600 font-black text-sm shadow-sm group-hover:shadow-md transition-shadow">01</div>
                 <div>
-                  <h4 className="font-bold text-slate-900 mb-2 text-base">QR 코드 입장</h4>
-                  <p className="text-sm text-slate-600 leading-relaxed">QR 코드를 스캔하여 입장하면 자동으로 로그인되며 <span className="text-indigo-600 font-bold bg-indigo-50 px-1.5 py-0.5 rounded">2시간</span> 동안 이용 권한이 부여됩니다.</p>
+                  <h4 className="font-bold text-slate-900 mb-2 text-base">QR 코드 스캔</h4>
+                  <p className="text-sm text-slate-600 leading-relaxed">입구의 QR 코드를 스캔하면 자동으로 게스트 계정이 생성되며 <span className="text-indigo-600 font-bold bg-indigo-50 px-1.5 py-0.5 rounded">2시간</span> 동안 이용 권한이 부여됩니다.</p>
                 </div>
               </div>
               <div className="flex gap-5 group">
@@ -434,8 +394,8 @@ export default function Home() {
               <div className="flex gap-5 group">
                 <div className="flex-shrink-0 w-11 h-11 bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-[1rem] flex items-center justify-center text-indigo-600 font-black text-sm shadow-sm group-hover:shadow-md transition-shadow">03</div>
                 <div>
-                  <h4 className="font-bold text-slate-900 mb-2 text-base">회원 정보 저장</h4>
-                  <p className="text-sm text-slate-600 leading-relaxed">발급된 회원번호는 브라우저에 안전하게 저장되어 재방문 시 별도의 가입 없이 즉시 이용 가능합니다.</p>
+                  <h4 className="font-bold text-slate-900 mb-2 text-base">자동 회원 생성</h4>
+                  <p className="text-sm text-slate-600 leading-relaxed">QR 스캔 시 자동으로 임의의 게스트 계정이 생성되며, 브라우저에 저장되어 재방문 시 동일한 계정으로 이용 가능합니다.</p>
                 </div>
               </div>
               <div className="flex gap-5 group">
