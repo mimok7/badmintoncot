@@ -38,11 +38,27 @@ function ScanContent() {
         console.log('QR 검증 성공, 계정 생성 시작');
 
         try {
-            // 1. 기존 회원 확인
+            // 1. 기존 회원 확인 (localStorage + DB 검증)
             const savedMemberId = localStorage.getItem('badminton_member_id');
             let memberId = savedMemberId;
+            let needsNewMember = !savedMemberId;
 
-            if (!savedMemberId) {
+            // localStorage에 저장된 회원이 실제 DB에 있는지 확인
+            if (savedMemberId) {
+                const { data: existingMember, error: checkError } = await supabase
+                    .from('members')
+                    .select('id')
+                    .eq('id', savedMemberId)
+                    .single();
+                
+                if (checkError || !existingMember) {
+                    console.log('저장된 회원 ID가 DB에 없음, 새로 생성합니다.');
+                    needsNewMember = true;
+                    localStorage.removeItem('badminton_member_id');
+                }
+            }
+
+            if (needsNewMember) {
                 setMessage('게스트 계정을 생성하는 중...');
                 
                 // 2. 임의의 닉네임 생성 (Guest_랜덤번호)
