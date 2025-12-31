@@ -180,9 +180,14 @@ export default function Home() {
       .insert({ court_id: courtId, user_id: member.id });
 
     if (error) {
-      if (error.code === '23505') alert('이미 이 코트에 대기 중입니다.');
-      else alert('예약 중 오류가 발생했습니다.');
+      console.error('예약 오류:', error);
+      if (error.code === '23505') {
+        alert('이미 이 코트에 대기 중입니다.');
+      } else {
+        alert(`예약 중 오류가 발생했습니다: ${error.message}`);
+      }
     } else {
+      alert('예약이 완료되었습니다!');
       fetchCourts();
     }
   };
