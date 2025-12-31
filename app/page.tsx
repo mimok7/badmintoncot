@@ -117,7 +117,10 @@ export default function Home() {
       const updatedCourts = courtsData.map(court => ({
         ...court,
         current_users_count: resData?.filter(r => r.court_id === court.id)?.length ?? 0,
-        waitingMembers: resData?.filter(r => r.court_id === court.id).map(r => r.members?.nickname || '알 수 없음') ?? []
+        waitingMembers: resData?.filter(r => r.court_id === court.id).map(r => {
+          const member = r.members as any;
+          return member?.nickname || '알 수 없음';
+        }) ?? []
       }));
       setCourts(updatedCourts);
     }
