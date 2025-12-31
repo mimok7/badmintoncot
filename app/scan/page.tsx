@@ -70,11 +70,11 @@ function ScanContent() {
 
             // 4. 입장 처리 (entry_sessions)
             setMessage('입장 처리 중...');
-            console.log('입장 처리 시도, member_id:', memberId);
+            console.log('입장 처리 시도, user_id:', memberId);
             
             const { data: entryData, error: entryError } = await supabase
                 .from('entry_sessions')
-                .insert({ member_id: memberId })
+                .insert({ user_id: memberId })
                 .select('*')
                 .single();
 
