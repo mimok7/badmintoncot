@@ -619,16 +619,13 @@ export default function Home() {
                 <div className="flex justify-between items-start mb-7">
                   <div>
                     <h3 className="text-2xl font-black text-slate-900 mb-1.5">{court.name}</h3>
-                    <div className="flex items-center gap-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-slate-300" strokeWidth={2.5} />
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Court ID: {court.id}</span>
-                    </div>
                   </div>
-                  <span className={`px-3.5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-sm ${court.status === 'available'
-                    ? 'bg-gradient-to-r from-green-50 to-emerald-50 text-green-600 border border-green-200/50'
-                    : 'bg-gradient-to-r from-amber-50 to-orange-50 text-amber-600 border border-amber-200/50'
-                    }`}>
-                    {court.status === 'available' ? 'Available' : 'In Use'}
+                  <span className={`px-3.5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-sm ${
+                    court.status === 'available'
+                      ? 'bg-gradient-to-r from-green-50 to-emerald-50 text-green-600 border border-green-200/50'
+                      : 'bg-gradient-to-r from-amber-50 to-orange-50 text-amber-600 border border-amber-200/50'
+                  }`}>
+                    {court.status === 'available' ? '사용가능' : '사용중'}
                   </span>
                 </div>
 
