@@ -201,7 +201,7 @@ function ScanContent() {
             <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-rose-50 via-white to-slate-50/50 p-6">
                 <div className="bg-white/80 backdrop-blur-xl p-12 rounded-[3rem] shadow-2xl shadow-rose-200/30 w-full max-w-md border border-white/60 text-center">
                     <div className="w-20 h-20 bg-gradient-to-br from-rose-100 to-rose-200 rounded-[1.5rem] flex items-center justify-center mb-8 mx-auto">
-                        <QrCode className="text-rose-600 w-10 h-10" strokeWidth={2.5} />
+                        <BadmintonIcon className="text-rose-600 w-10 h-10" strokeWidth={2.5} />
                     </div>
                     <h1 className="text-3xl font-black mb-3 text-center bg-gradient-to-r from-rose-900 to-rose-700 bg-clip-text text-transparent tracking-tight">
                         유효하지 않은 QR 코드

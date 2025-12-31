@@ -489,7 +489,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-6 h-20 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 bg-gradient-to-br from-indigo-600 to-indigo-700 rounded-[0.875rem] flex items-center justify-center shadow-lg shadow-indigo-200/50">
-              <QrCode className="text-white w-5 h-5" strokeWidth={2.5} />
+              <BadmintonIcon className="text-white w-5 h-5" strokeWidth={2.5} />
             </div>
             <h1 className="text-xl font-black bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent tracking-tight">BADMINTON<span className="bg-gradient-to-r from-indigo-600 to-indigo-700 bg-clip-text">COT</span></h1>
           </div>
