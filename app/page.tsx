@@ -181,10 +181,11 @@ export default function Home() {
 
     if (error) {
       console.error('예약 오류:', error);
+      console.error('오류 상세 JSON:', JSON.stringify(error, null, 2));
       if (error.code === '23505') {
         alert('이미 이 코트에 대기 중입니다.');
       } else {
-        alert(`예약 중 오류가 발생했습니다: ${error.message}`);
+        alert(`예약 중 오류: code=${error.code} message=${error.message}`);
       }
     } else {
       alert('예약이 완료되었습니다!');
