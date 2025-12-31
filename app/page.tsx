@@ -24,10 +24,12 @@ interface Court {
   name: string;
   status: string;
   current_users_count: number;
+  current_playing_team: number | null;
   waitingMembers?: string[];
   waitingTeams?: {
     teamNumber: number;
     members: string[];
+    status: 'waiting' | 'confirmed' | 'playing';
   }[];
 }
 
@@ -149,29 +151,34 @@ export default function Home() {
     const { data: courtsData } = await supabase.from('courts').select('*').order('id', { ascending: true });
     const { data: resData } = await supabase
       .from('reservations')
-      .select('court_id, user_id, team_number, members(nickname)')
+      .select('court_id, user_id, team_number, status, members(nickname)')
       .order('team_number', { ascending: true });
 
     if (courtsData) {
       const updatedCourts = courtsData.map(court => {
         const courtReservations = resData?.filter(r => r.court_id === court.id) ?? [];
         
-        // 팀별로 그룹핑
-        const teamsMap = new Map<number, string[]>();
+        // 팀별로 그룹핑 (상태 포함)
+        const teamsMap = new Map<number, {members: string[], status: string}>();
         courtReservations.forEach(r => {
           const member = r.members as any;
           const nickname = member?.nickname || '알 수 없음';
           const teamNum = r.team_number || 1;
+          const status = r.status || 'waiting';
           
           if (!teamsMap.has(teamNum)) {
-            teamsMap.set(teamNum, []);
+            teamsMap.set(teamNum, {members: [], status});
           }
-          teamsMap.get(teamNum)!.push(nickname);
+          teamsMap.get(teamNum)!.members.push(nickname);
         });
         
         // Map을 배열로 변환
         const waitingTeams = Array.from(teamsMap.entries())
-          .map(([teamNumber, members]) => ({ teamNumber, members }))
+          .map(([teamNumber, data]) => ({ 
+            teamNumber, 
+            members: data.members,
+            status: data.status as 'waiting' | 'confirmed' | 'playing'
+          }))
           .sort((a, b) => a.teamNumber - b.teamNumber);
         
         return {
@@ -300,6 +307,38 @@ export default function Home() {
       setMyReservedCourtId(null);
       setMyTeamNumber(null);
       fetchCourts();
+    }
+  };
+
+  const handleEndGame = async (courtId: number) => {
+    if (!member) return;
+
+    const confirmed = confirm('경기를 종료하시겠습니까?');
+    if (!confirmed) return;
+
+    try {
+      const { data, error } = await supabase.rpc('end_game', {
+        p_court_id: courtId,
+        p_user_id: member.id
+      });
+
+      if (error) {
+        console.error('경기 종료 오류:', error);
+        alert('경기 종료 중 오류가 발생했습니다.');
+        return;
+      }
+
+      if (data && data.success) {
+        alert(data.message);
+        setMyReservedCourtId(null);
+        setMyTeamNumber(null);
+        fetchCourts();
+      } else {
+        alert(data?.message || '경기 종료에 실패했습니다.');
+      }
+    } catch (error) {
+      console.error('경기 종료 처리 오류:', error);
+      alert('경기 종료 처리 중 오류가 발생했습니다.');
     }
   };
 
@@ -451,38 +490,66 @@ export default function Home() {
                     {/* 대기팀 목록 */}
                     {court.waitingTeams && court.waitingTeams.length > 0 ? (
                       <div className="space-y-3">
-                        {court.waitingTeams.map((team) => (
-                          <div 
-                            key={team.teamNumber} 
-                            className={`p-3 rounded-xl border-2 transition-all ${
-                              myReservedCourtId === court.id && myTeamNumber === team.teamNumber
-                                ? 'bg-indigo-50 border-indigo-300'
-                                : 'bg-white border-slate-200'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs font-bold text-indigo-600">대기 {team.teamNumber}</span>
-                              <span className="text-xs font-semibold text-slate-500">{team.members.length}/4명</span>
+                        {court.waitingTeams.map((team) => {
+                          const isMyTeam = myReservedCourtId === court.id && myTeamNumber === team.teamNumber;
+                          const statusColor = 
+                            team.status === 'playing' ? 'bg-green-50 border-green-400' :
+                            team.status === 'confirmed' ? 'bg-blue-50 border-blue-400' :
+                            isMyTeam ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-slate-200';
+                          
+                          const statusBadge = 
+                            team.status === 'playing' ? '🎾 경기중' :
+                            team.status === 'confirmed' ? '✅ 확정' : '';
+                          
+                          return (
+                            <div 
+                              key={team.teamNumber} 
+                              className={`p-3 rounded-xl border-2 transition-all ${statusColor}`}
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-bold text-indigo-600">대기 {team.teamNumber}</span>
+                                  {statusBadge && (
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white">
+                                      {statusBadge}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-xs font-semibold text-slate-500">{team.members.length}/4명</span>
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {team.members.map((nickname, idx) => (
+                                  <span 
+                                    key={idx} 
+                                    className={`px-2 py-1 rounded-lg text-[10px] font-medium ${
+                                      team.status === 'playing' ? 'bg-green-100 text-green-700' :
+                                      team.status === 'confirmed' ? 'bg-blue-100 text-blue-700' :
+                                      'bg-indigo-100 text-indigo-700'
+                                    }`}
+                                  >
+                                    {nickname}
+                                  </span>
+                                ))}
+                              </div>
                             </div>
-                            <div className="flex flex-wrap gap-1.5">
-                              {team.members.map((nickname, idx) => (
-                                <span 
-                                  key={idx} 
-                                  className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded-lg text-[10px] font-medium"
-                                >
-                                  {nickname}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     ) : (
                       <p className="text-xs text-slate-400 text-center py-4">대기 중인 팀이 없습니다</p>
                     )}
                   </div>
 
-                  {myReservedCourtId === court.id ? (
+                  {/* 경기 종료 버튼 (경기 중인 팀의 멤버에게만 표시) */}
+                  {myReservedCourtId === court.id && court.waitingTeams?.find(t => t.teamNumber === myTeamNumber && t.status === 'playing') ? (
+                    <button
+                      onClick={() => handleEndGame(court.id)}
+                      className="w-full py-4 bg-gradient-to-r from-green-600 to-green-700 text-white text-sm rounded-[1.25rem] font-bold hover:from-green-700 hover:to-green-800 transition-all shadow-lg shadow-green-500/30 flex items-center justify-center gap-2 group/btn active:scale-[0.98]"
+                    >
+                      🏁 경기 종료
+                      <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" strokeWidth={2.5} />
+                    </button>
+                  ) : myReservedCourtId === court.id ? (
                     <button
                       onClick={handleCancelReservation}
                       className="w-full py-4 bg-gradient-to-r from-rose-600 to-rose-700 text-white text-sm rounded-[1.25rem] font-bold hover:from-rose-700 hover:to-rose-800 transition-all shadow-lg shadow-rose-500/30 flex items-center justify-center gap-2 group/btn active:scale-[0.98]"
