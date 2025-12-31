@@ -8,10 +8,10 @@ import {
   Users,
   MapPin,
   Info,
-  QrCode,
   LogOut,
   ChevronRight
 } from 'lucide-react';
+import { BadmintonIcon } from './components/BadmintonIcon';
 
 interface Member {
   id: string;
