@@ -72,9 +72,15 @@ function ScanContent() {
             setMessage('입장 처리 중...');
             console.log('입장 처리 시도, user_id:', memberId);
             
+            // UUID 직접 생성 (DB에 기본값이 없으므로)
+            const entryId = crypto.randomUUID();
+            
             const { data: entryData, error: entryError } = await supabase
                 .from('entry_sessions')
-                .insert({ user_id: memberId })
+                .insert({ 
+                    id: entryId,
+                    user_id: memberId 
+                })
                 .select('*')
                 .single();
 
