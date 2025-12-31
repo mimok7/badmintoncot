@@ -65,10 +65,29 @@ export default function AdminPage() {
         rules: '• 코트 이용 시간은 2시간으로 제한됩니다.\n• 4명이 모여야 코트 사용이 가능합니다.\n• 안전을 위해 운동화를 착용해주세요.\n• 코트 내 음식물 반입을 금지합니다.'
     });
 
-    const handleSaveSettings = () => {
-        // localStorage에 저장
-        localStorage.setItem('badminton_settings', JSON.stringify(settings));
-        alert('설정이 저장되었습니다!');
+    const handleSaveSettings = async () => {
+        try {
+            // Supabase settings 테이블에 저장 (id=1로 upsert)
+            const { error } = await supabase
+                .from('settings')
+                .upsert({
+                    id: 1,
+                    venue_name: settings.venueName,
+                    operating_hours: settings.operatingHours,
+                    contact_info: settings.contactInfo,
+                    rules: settings.rules,
+                    updated_at: new Date().toISOString()
+                }, {
+                    onConflict: 'id'
+                });
+
+            if (error) throw error;
+
+            alert('설정이 저장되었습니다!');
+        } catch (error) {
+            console.error('설정 저장 오류:', error);
+            alert('설정 저장 중 오류가 발생했습니다.');
+        }
     };
 
     useEffect(() => {
@@ -77,22 +96,14 @@ export default function AdminPage() {
         generateQRWithFixedSession(host);
         fetchCourts();
         fetchActiveSessions();
-
-        // localStorage에서 설정 불러오기
-        const savedSettings = localStorage.getItem('badminton_settings');
-        if (savedSettings) {
-            try {
-                setSettings(JSON.parse(savedSettings));
-            } catch (e) {
-                console.error('설정 불러오기 오류:', e);
-            }
-        }
+        fetchSettings();
 
         // 실시간 업데이트 구독
         const channel = supabase
             .channel('admin-changes')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'courts' }, fetchCourts)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'entry_sessions' }, fetchActiveSessions)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, fetchSettings)
             .subscribe();
 
         return () => {
@@ -139,6 +150,29 @@ export default function AdminPage() {
         if (data) setActiveSessions(data as EntrySession[]);
     };
 
+    const fetchSettings = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('settings')
+                .select('*')
+                .eq('id', 1)
+                .single();
+
+            if (error) throw error;
+
+            if (data) {
+                setSettings({
+                    venueName: data.venue_name || '스마트 배드민턴 코트',
+                    operatingHours: data.operating_hours || '평일: 06:00 - 23:00 | 주말: 07:00 - 22:00',
+                    contactInfo: data.contact_info || '전화: 02-1234-5678 | 이메일: info@badminton.com',
+                    rules: data.rules || '• 코트 이용 시간은 2시간으로 제한됩니다.\n• 4명이 모여야 코트 사용이 가능합니다.\n• 안전을 위해 운동화를 착용해주세요.\n• 코트 내 음식물 반입을 금지합니다.'
+                });
+            }
+        } catch (error) {
+            console.error('설정 불러오기 오류:', error);
+        }
+    };
+
     const copyToClipboard = () => {
         navigator.clipboard.writeText(qrUrl);
         setCopied(true);
@@ -158,17 +192,32 @@ export default function AdminPage() {
     };
 
     const getSessionsByHour = () => {
-        const hourMap: { [key: string]: number } = {};
+        const timeMap: { [key: string]: number } = {};
+        const now = new Date();
+        const threeHoursAgo = new Date(now.getTime() - 3 * 60 * 60 * 1000);
 
-        activeSessions.forEach(session => {
-            const hour = new Date(session.entry_at).getHours();
-            const hourKey = `${hour}:00`;
-            hourMap[hourKey] = (hourMap[hourKey] || 0) + 1;
+        // 3시간 전부터 현재까지의 세션만 필터링
+        const recentSessions = activeSessions.filter(session => {
+            const entryTime = new Date(session.entry_at);
+            return entryTime >= threeHoursAgo && entryTime <= now;
         });
 
-        return Object.entries(hourMap)
-            .sort(([a], [b]) => parseInt(a) - parseInt(b))
-            .map(([hour, count]) => ({ hour, count }));
+        // 10분 단위로 그룹화
+        recentSessions.forEach(session => {
+            const entryTime = new Date(session.entry_at);
+            const hours = entryTime.getHours();
+            const minutes = Math.floor(entryTime.getMinutes() / 10) * 10;
+            const timeKey = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+            timeMap[timeKey] = (timeMap[timeKey] || 0) + 1;
+        });
+
+        return Object.entries(timeMap)
+            .sort(([a], [b]) => {
+                const [aHour, aMin] = a.split(':').map(Number);
+                const [bHour, bMin] = b.split(':').map(Number);
+                return (aHour * 60 + aMin) - (bHour * 60 + bMin);
+            })
+            .map(([time, count]) => ({ hour: time, count }));
     };
 
     const handlePrint = async () => {
@@ -501,63 +550,79 @@ export default function AdminPage() {
                             <div className="bg-white rounded-2xl p-6 shadow-lg border border-slate-200">
                                 <h3 className="text-xl font-black text-slate-900 mb-4 flex items-center gap-2">
                                     <Activity className="w-5 h-5 text-blue-600" />
-                                    시간대별 입장
+                                    시간대별 입장 (최근 3시간)
                                 </h3>
-                                <div className="space-y-3">
-                                    {getSessionsByHour().slice(-5).map(({ hour, count }) => (
-                                        <div key={hour} className="flex items-center gap-3">
-                                            <span className="text-sm font-bold text-slate-600 w-16">{hour}</span>
-                                            <div className="flex-1 bg-slate-100 rounded-full h-8 overflow-hidden">
-                                                <div
-                                                    className="h-full bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-end pr-3"
-                                                    style={{ width: `${(count / Math.max(...getSessionsByHour().map(s => s.count))) * 100}%` }}
-                                                >
-                                                    <span className="text-xs font-bold text-white">{count}명</span>
+                                <div className="space-y-2 max-h-96 overflow-y-auto">
+                                    {getSessionsByHour().length > 0 ? (
+                                        getSessionsByHour().map(({ hour, count }) => (
+                                            <div key={hour} className="flex items-center gap-3">
+                                                <span className="text-sm font-bold text-slate-600 w-16">{hour}</span>
+                                                <div className="flex-1 bg-slate-100 rounded-full h-8 overflow-hidden">
+                                                    <div
+                                                        className="h-full bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-end pr-3"
+                                                        style={{ width: `${(count / Math.max(...getSessionsByHour().map(s => s.count))) * 100}%` }}
+                                                    >
+                                                        <span className="text-xs font-bold text-white">{count}명</span>
+                                                    </div>
                                                 </div>
                                             </div>
+                                        ))
+                                    ) : (
+                                        <div className="text-center py-8 text-slate-400">
+                                            <p className="text-sm font-semibold">최근 3시간 동안 입장 기록이 없습니다</p>
                                         </div>
-                                    ))}
+                                    )}
                                 </div>
                             </div>
                         </div>
 
                         <div className="bg-white rounded-2xl p-6 shadow-lg border border-slate-200">
                             <h3 className="text-xl font-black text-slate-900 mb-6">활성 세션 목록</h3>
-                            <div className="space-y-3">
-                                {activeSessions.map((session) => (
-                                    <div
-                                        key={session.id}
-                                        className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200 hover:bg-slate-100 transition-colors"
-                                    >
-                                        <div className="flex items-center gap-4">
-                                            <div className="w-12 h-12 bg-gradient-to-br from-indigo-100 to-indigo-200 rounded-xl flex items-center justify-center">
-                                                <Users className="w-6 h-6 text-indigo-600" strokeWidth={2.5} />
+                            {activeSessions.length === 0 ? (
+                                <div className="text-center py-12 text-slate-400">
+                                    <Users className="w-16 h-16 mx-auto mb-4 opacity-20" />
+                                    <p className="font-semibold">현재 활성 세션이 없습니다</p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                    {(() => {
+                                        // 중복 제거 및 시간 순 정렬
+                                        const uniqueSessions = activeSessions
+                                            .filter((session, index, self) => 
+                                                index === self.findIndex(s => s.members?.id === session.members?.id)
+                                            )
+                                            .sort((a, b) => new Date(b.entry_at).getTime() - new Date(a.entry_at).getTime());
+                                        
+                                        return uniqueSessions.map((session) => (
+                                            <div
+                                                key={session.id}
+                                                className="p-4 bg-slate-50 rounded-xl border border-slate-200 hover:bg-slate-100 transition-colors"
+                                            >
+                                                <div className="flex items-start gap-3 mb-3">
+                                                    <div className="w-10 h-10 bg-gradient-to-br from-indigo-100 to-indigo-200 rounded-lg flex items-center justify-center flex-shrink-0">
+                                                        <Users className="w-5 h-5 text-indigo-600" strokeWidth={2.5} />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="font-bold text-slate-900 truncate">{session.members?.nickname || '알 수 없음'}</p>
+                                                        <p className="text-xs text-slate-500 font-semibold">
+                                                            회원 #{session.members?.member_number || 'N/A'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <div className="flex items-center gap-2 text-sm font-bold text-slate-600">
+                                                        <Clock className="w-4 h-4 flex-shrink-0" />
+                                                        <span className="truncate">{getTimeRemaining(session.expires_at)}</span>
+                                                    </div>
+                                                    <p className="text-xs text-slate-400 pl-6">
+                                                        입장: {new Date(session.entry_at).toLocaleTimeString('ko-KR')}
+                                                    </p>
+                                                </div>
                                             </div>
-                                            <div>
-                                                <p className="font-bold text-slate-900">{session.members?.nickname || '알 수 없음'}</p>
-                                                <p className="text-xs text-slate-500 font-semibold">
-                                                    회원 #{session.members?.member_number || 'N/A'}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <div className="text-right">
-                                            <div className="flex items-center gap-2 text-sm font-bold text-slate-600 mb-1">
-                                                <Clock className="w-4 h-4" />
-                                                {getTimeRemaining(session.expires_at)}
-                                            </div>
-                                            <p className="text-xs text-slate-400">
-                                                입장: {new Date(session.entry_at).toLocaleTimeString('ko-KR')}
-                                            </p>
-                                        </div>
-                                    </div>
-                                ))}
-                                {activeSessions.length === 0 && (
-                                    <div className="text-center py-12 text-slate-400">
-                                        <Users className="w-16 h-16 mx-auto mb-4 opacity-20" />
-                                        <p className="font-semibold">현재 활성 세션이 없습니다</p>
-                                    </div>
-                                )}
-                            </div>
+                                        ));
+                                    })()}
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
