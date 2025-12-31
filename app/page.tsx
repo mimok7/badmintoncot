@@ -24,6 +24,7 @@ interface Court {
   name: string;
   status: string;
   current_users_count: number;
+  waitingMembers?: string[];
 }
 
 interface EntrySession {
@@ -108,12 +109,15 @@ export default function Home() {
 
   const fetchCourts = async () => {
     const { data: courtsData } = await supabase.from('courts').select('*').order('id', { ascending: true });
-    const { data: resData } = await supabase.from('reservations').select('court_id');
+    const { data: resData } = await supabase
+      .from('reservations')
+      .select('court_id, user_id, members(nickname)');
 
     if (courtsData) {
       const updatedCourts = courtsData.map(court => ({
         ...court,
-        current_users_count: resData?.filter(r => r.court_id === court.id)?.length ?? 0
+        current_users_count: resData?.filter(r => r.court_id === court.id)?.length ?? 0,
+        waitingMembers: resData?.filter(r => r.court_id === court.id).map(r => r.members?.nickname || '알 수 없음') ?? []
       }));
       setCourts(updatedCourts);
     }
@@ -338,13 +342,23 @@ export default function Home() {
                       </div>
                       <span className="text-xl font-black bg-gradient-to-r from-indigo-600 to-indigo-700 bg-clip-text text-transparent">{court.current_users_count}<span className="text-slate-300 text-sm font-semibold"> / 4</span></span>
                     </div>
-                    <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden shadow-inner">
+                    <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden shadow-inner mb-3">
                       <div
                         className={`h-full transition-all duration-1000 ease-out rounded-full shadow-sm ${court.current_users_count >= 4 ? 'bg-gradient-to-r from-rose-500 to-pink-500' : 'bg-gradient-to-r from-indigo-500 to-indigo-600'
                           }`}
                         style={{ width: `${(court.current_users_count / 4) * 100}%` }}
                       ></div>
                     </div>
+                    {court.waitingMembers && court.waitingMembers.length > 0 && (
+                      <div className="mt-3 space-y-1.5">
+                        {court.waitingMembers.map((nickname, idx) => (
+                          <div key={idx} className="flex items-center gap-2 text-xs text-slate-600">
+                            <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></div>
+                            <span className="font-medium">{nickname}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <button
