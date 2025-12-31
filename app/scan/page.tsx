@@ -65,7 +65,7 @@ function ScanContent() {
     const handleNicknameSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!nickname.trim()) {
-            alert('닉네임을 입력해주세요.');
+            alert('이름을 입력해주세요.');
             return;
         }
 
@@ -94,7 +94,7 @@ function ScanContent() {
             await processEntry(memberData.id);
 
         } catch (error) {
-            console.error('닉네임 처리 오류:', error);
+            console.error('이름 처리 오류:', error);
             setStatus('error');
         }
     };
