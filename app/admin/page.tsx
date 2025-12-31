@@ -486,7 +486,7 @@ export default function AdminPage() {
                                             />
                                         ) : (
                                             <div className="w-[320px] h-[320px] flex items-center justify-center">
-                                                <QrCode className="w-24 h-24 text-slate-200 animate-pulse" />
+                                                <BadmintonIcon className="w-24 h-24 text-slate-200 animate-pulse" />
                                             </div>
                                         )}
                                     </div>
