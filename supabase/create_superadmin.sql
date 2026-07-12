@@ -3,7 +3,7 @@
 -- 2) 이 파일 전체를 한 번에 실행합니다.
 -- 3) 실행 후에는 비밀번호가 포함된 줄을 다시 주석 처리합니다.
 -- 비밀번호를 입력한 뒤 앞의 -- 를 삭제하고, 이 파일 전체를 한 번에 실행하세요.
--- select set_config('app.initial_password', '여기에*초기비밀번호*입력', false);
+select set_config('app.initial_password', 'saintt7449!', false);
 
 do $$
 declare
@@ -13,6 +13,10 @@ declare
 begin
   if nullif(initial_password, '') is null then
     raise exception 'Set app.initial_password for this SQL session before running.';
+  end if;
+
+  if to_regclass('public.profiles') is null then
+    raise exception 'public.profiles does not exist. Select the app Supabase project or apply the profiles schema first.';
   end if;
 
   select id into target_user_id
