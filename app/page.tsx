@@ -429,7 +429,7 @@ export default function Home() {
         setSelectedClub(memberData.club_name || '');
         localStorage.setItem('badminton_member_nickname', memberData.nickname);
         localStorage.setItem('badminton_member_club_name', memberData.club_name || '');
-        const { data: sessionData } = await supabase
+        const { data: sessionData, error: sessionLoadError } = await supabase
           .from('entry_sessions')
           .select('*')
           .eq('user_id', savedMemberId)
@@ -440,6 +440,9 @@ export default function Home() {
           .maybeSingle();
 
         if (sessionData) setSession(sessionData);
+        if (sessionLoadError) {
+          console.error('입장 세션 조회 실패:', sessionLoadError);
+        }
         
         // 예약 상태 확인
         const { data: reservationData } = await supabase
@@ -645,15 +648,18 @@ export default function Home() {
       localStorage.setItem('badminton_member_club_name', data.club_name || '');
       setMember(data);
       
-      // 자동으로 입장 처리 (id 직접 생성, expires_at 반영)
+      // 자동으로 입장 처리. ID는 DB 기본값을 사용해 프로젝트별 스키마 차이를 피한다.
       const expiresAt = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
-      const entryId = crypto.randomUUID();
-      const { data: entryData } = await supabase
+      const { data: entryData, error: entryError } = await supabase
         .from('entry_sessions')
-        .insert({ id: entryId, user_id: data.id, expires_at: expiresAt, stadium_id: currentStadium?.id })
+        .insert({ user_id: data.id, expires_at: expiresAt, stadium_id: currentStadium?.id })
         .select()
         .single();
       
+      if (entryError) {
+        console.error('자동 입장 처리 실패:', entryError);
+        alert(`입장 처리 중 오류가 발생했습니다: ${entryError.message}`);
+      }
       if (entryData) setSession(entryData);
     }
   };
@@ -688,15 +694,15 @@ export default function Home() {
     }
 
     const expiresAt = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
-    const entryId = crypto.randomUUID();
     const { data, error } = await supabase
       .from('entry_sessions')
-      .insert({ id: entryId, user_id: member.id, expires_at: expiresAt, stadium_id: currentStadium?.id })
+      .insert({ user_id: member.id, expires_at: expiresAt, stadium_id: currentStadium?.id })
       .select()
       .single();
 
     if (error) {
-      alert('입장 처리 중 오류가 발생했습니다.');
+      console.error('입장 처리 실패:', error);
+      alert(`입장 처리 중 오류가 발생했습니다: ${error.message}`);
       return;
     }
 
