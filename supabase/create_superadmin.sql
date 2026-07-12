@@ -3,7 +3,7 @@
 -- 2) 이 파일 전체를 한 번에 실행합니다.
 -- 3) 실행 후에는 비밀번호가 포함된 줄을 다시 주석 처리합니다.
 -- 비밀번호를 입력한 뒤 앞의 -- 를 삭제하고, 이 파일 전체를 한 번에 실행하세요.
-select set_config('app.initial_password', 'saintt7449!', false);
+select set_config('app.initial_password', '이곳에 패스워드!', false);
 
 do $$
 declare
@@ -64,7 +64,7 @@ begin
     on conflict (email) do update
       set role = 'superadmin';
   else
-    raise exception 'Neither public.profiles nor public.admin_users exists. Apply the project schema first.';
+    raise notice 'Auth user created, but no admin role table exists. Apply profiles or admin_users schema to enable admin authorization.';
   end if;
 end;
 $$;
