@@ -2,7 +2,8 @@
 -- 1) 아래 한 줄의 주석을 해제하고 비밀번호를 입력합니다.
 -- 2) 이 파일 전체를 한 번에 실행합니다.
 -- 3) 실행 후에는 비밀번호가 포함된 줄을 다시 주석 처리합니다.
--- select set_config('app.initial_password', '여기에_초기비밀번호_입력', false);
+-- 비밀번호를 입력한 뒤 앞의 -- 를 삭제하고, 이 파일 전체를 한 번에 실행하세요.
+-- select set_config('app.initial_password', '여기에*초기비밀번호*입력', false);
 
 do $$
 declare
