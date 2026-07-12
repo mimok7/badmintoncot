@@ -1309,7 +1309,7 @@ export default function Home() {
                                 key={teamNum}
                                 onClick={() => handleReserve(court.id, teamNum)}
                                 className={`py-2 px-2 text-[11px] rounded-lg font-bold transition-all shadow-sm flex items-center justify-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 ${
-                                  isFull || isUnavailable
+                                  isFull || court.is_active === false || ['occupied', 'lesson', 'beginner', 'maintenance'].includes(court.status)
                                     ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
                                     : isDifferentClub
                                     ? 'bg-slate-100 text-slate-400 border border-slate-200/50 cursor-not-allowed'
@@ -1317,7 +1317,7 @@ export default function Home() {
                                     ? 'bg-slate-300 text-slate-600'
                                     : 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white hover:from-indigo-700 hover:to-indigo-800'
                                 }`}
-                                disabled={!session || myReservedCourtId !== null || isFull || isUnavailable || isDifferentClub}
+                                disabled={!session || myReservedCourtId !== null || isFull || court.is_active === false || ['occupied', 'lesson', 'beginner', 'maintenance'].includes(court.status) || isDifferentClub}
                               >
                                 {isDifferentClub ? '클럽다름' : `신청 ${teamNum}`}
                                 {team && <span className="text-[10px]">({team.members.length}/4)</span>}
