@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { Mail, Lock, LogIn, UserPlus, Home } from 'lucide-react';
-import { BadmintonIcon } from '../../components/BadmintonIcon';
 
 export default function AdminLoginPage() {
     const router = useRouter();
@@ -33,8 +32,8 @@ export default function AdminLoginPage() {
             if (data.user) {
                 router.push('/admin');
             }
-        } catch (error: any) {
-            setError(error.message || '로그인에 실패했습니다.');
+        } catch (error) {
+            setError(error instanceof Error ? error.message : '로그인에 실패했습니다.');
         } finally {
             setIsLoading(false);
         }
@@ -76,8 +75,8 @@ export default function AdminLoginPage() {
                     setConfirmPassword('');
                 }, 3000);
             }
-        } catch (error: any) {
-            setError(error.message || '회원가입에 실패했습니다.');
+        } catch (error) {
+            setError(error instanceof Error ? error.message : '회원가입에 실패했습니다.');
         } finally {
             setIsLoading(false);
         }

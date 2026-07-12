@@ -5,18 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { CheckCircle, Loader2, User, AlertTriangle, BellOff } from 'lucide-react';
 import { BadmintonIcon } from '../components/BadmintonIcon';
 import { supabase } from '@/lib/supabase';
-
-const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-  const R = 6371e3; // Earth radius in meters
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-    Math.sin(dLon/2) * Math.sin(dLon/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c; // in meters
-};
+import { getDistanceInMeters } from '@/lib/geo';
 
 function ScanContent() {
     const router = useRouter();
@@ -118,7 +107,7 @@ function ScanContent() {
             // 1차 위치 확인
             navigator.geolocation.getCurrentPosition(
                 (pos) => {
-                    const dist = getDistance(pos.coords.latitude, pos.coords.longitude, locationLat, locationLng);
+                    const dist = getDistanceInMeters(pos.coords.latitude, pos.coords.longitude, locationLat, locationLng);
                     setIsInsideGeofence(dist <= locationRadius);
                 },
                 (err) => {
@@ -130,7 +119,7 @@ function ScanContent() {
             // 실시간 트래킹
             watchId = navigator.geolocation.watchPosition(
                 (pos) => {
-                    const dist = getDistance(pos.coords.latitude, pos.coords.longitude, locationLat, locationLng);
+                    const dist = getDistanceInMeters(pos.coords.latitude, pos.coords.longitude, locationLat, locationLng);
                     setIsInsideGeofence(dist <= locationRadius);
                 },
                 (err) => {
@@ -167,7 +156,7 @@ function ScanContent() {
         const savedMemberId = localStorage.getItem('badminton_member_id');
         
         if (savedMemberId) {
-            const { data: existingMember, error: checkError } = await supabase
+            const { data: existingMember } = await supabase
                 .from('members')
                 .select('id')
                 .eq('id', savedMemberId)
@@ -263,7 +252,7 @@ function ScanContent() {
             const entryId = crypto.randomUUID();
             const expiresAt = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
             
-            const { data: entryData, error: entryError } = await supabase
+            const { error: entryError } = await supabase
                 .from('entry_sessions')
                 .insert({ 
                     id: entryId,

@@ -6,7 +6,6 @@ import {
   User,
   Clock,
   Users,
-  MapPin,
   Info,
   LogOut,
   ChevronRight,
@@ -14,7 +13,7 @@ import {
   AlertTriangle,
   BellOff
 } from 'lucide-react';
-import { BadmintonIcon } from './components/BadmintonIcon';
+import { getDistanceInMeters } from '@/lib/geo';
 
 interface Member {
   id: string;
@@ -82,18 +81,6 @@ const getClubColorClass = (clubName: string | undefined): string => {
   return colors[index];
 };
 
-const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-  const R = 6371e3; // Earth radius in meters
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-    Math.sin(dLon/2) * Math.sin(dLon/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c; // in meters
-};
-
 export default function Home() {
   const [member, setMember] = useState<Member | null>(null);
   const [nickname, setNickname] = useState('');
@@ -103,10 +90,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [myReservedCourtId, setMyReservedCourtId] = useState<number | null>(null);
   const [myTeamNumber, setMyTeamNumber] = useState<number | null>(null);
-  const [selectedTeam, setSelectedTeam] = useState<{courtId: number, teamNumber: number} | null>(null);
   const [myCurrentStatus, setMyCurrentStatus] = useState<'waiting' | 'confirmed' | 'playing' | null>(null);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
-  const [geoPermissionState, setGeoPermissionState] = useState<PermissionState>('prompt');
   const [courtCount, setCourtCount] = useState<number>(8);
   const [venueName, setVenueName] = useState<string>('배드민턴 코트');
   const [clubs, setClubs] = useState<string[]>([]);
@@ -116,9 +101,6 @@ export default function Home() {
   const [stadiums, setStadiums] = useState<Stadium[]>([]);
   const [currentStadium, setCurrentStadium] = useState<Stadium | null>(null);
   const [findingStadium, setFindingStadium] = useState<boolean>(true);
-  const [locationLat, setLocationLat] = useState<number>(37.5665);
-  const [locationLng, setLocationLng] = useState<number>(126.9780);
-  const [locationRadius, setLocationRadius] = useState<number>(100);
   const [isInsideGeofence, setIsInsideGeofence] = useState<boolean | null>(null);
 
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -137,18 +119,6 @@ export default function Home() {
           setNotificationPermission(permission);
         });
       }
-    }
-  }, []);
-
-  // 위치 서비스 권한 상태 모니터링
-  useEffect(() => {
-    if (typeof window !== 'undefined' && 'permissions' in navigator) {
-      navigator.permissions.query({ name: 'geolocation' as PermissionName }).then((status) => {
-        setGeoPermissionState(status.state);
-        status.onchange = () => {
-          setGeoPermissionState(status.state);
-        };
-      }).catch(err => console.error(err));
     }
   }, []);
 
@@ -173,8 +143,8 @@ export default function Home() {
       if (data) {
         setClubs(data.map((c: any) => c.name));
       }
-    } catch (e) {
-      console.error('Error fetching clubs:', e);
+    } catch (error) {
+      console.error('Error fetching clubs:', error);
     }
   };
 
@@ -331,7 +301,7 @@ export default function Home() {
         let minDistance = Infinity;
 
         for (const stadium of stadiums) {
-          const dist = getDistance(pos.coords.latitude, pos.coords.longitude, stadium.latitude, stadium.longitude);
+          const dist = getDistanceInMeters(pos.coords.latitude, pos.coords.longitude, stadium.latitude, stadium.longitude);
           if (dist <= stadium.radius_meter && dist < minDistance) {
             minDistance = dist;
             foundStadium = stadium;
@@ -558,7 +528,7 @@ export default function Home() {
   const fetchSettings = async () => {
     if (!currentStadium) return;
     try {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('settings')
         .select('*')
         .eq('stadium_id', currentStadium.id)
@@ -611,8 +581,7 @@ export default function Home() {
   const handleInstallPWA = async () => {
     if (!deferredPrompt) return;
     deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    console.log(`PWA install prompt outcome: ${outcome}`);
+    await deferredPrompt.userChoice;
     setDeferredPrompt(null);
     setShowInstallBanner(false);
   };
@@ -666,52 +635,6 @@ export default function Home() {
     }
   };
 
-  const handleEntry = async () => {
-    if (!member) return;
-
-    // 위치 기반 체크
-    if (useGeofence && (isInsideGeofence === false || isInsideGeofence === null)) {
-      alert('구장 내에서만 입장(로그인)이 가능합니다. 위치 서비스를 승인하고 구장에 접근해 주세요.');
-      return;
-    }
-
-    // 1시간 이내 재로그인(재입장) 차단 검사
-    const { data: recentSessions, error: sessionErr } = await supabase
-      .from('entry_sessions')
-      .select('entry_at')
-      .eq('user_id', member.id)
-      .order('entry_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (recentSessions) {
-      const lastEntryTime = new Date(recentSessions.entry_at).getTime();
-      const diffMs = Date.now() - lastEntryTime;
-      const oneHourMs = 60 * 60 * 1000;
-      if (diffMs < oneHourMs) {
-        const remainingMinutes = Math.ceil((oneHourMs - diffMs) / (60 * 1000));
-        alert(`한 번 로그인(입장) 후 1시간 이내에는 재로그인이 불가합니다.\n${remainingMinutes}분 후에 다시 이용해 주세요.`);
-        return;
-      }
-    }
-
-    const expiresAt = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
-    const entryId = crypto.randomUUID();
-    const { data, error } = await supabase
-      .from('entry_sessions')
-      .insert({ id: entryId, user_id: member.id, expires_at: expiresAt, stadium_id: currentStadium?.id })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('입장 처리 실패:', error);
-      alert(`입장 처리 중 오류가 발생했습니다: ${error.message}`);
-      return;
-    }
-
-    if (data) setSession(data);
-  };
-
   const handleReserve = async (courtId: number, teamNumber: number) => {
     if (!member || !session) {
       alert('입장 처리가 필요합니다.');
@@ -753,7 +676,6 @@ export default function Home() {
       alert(`신청${teamNumber}팀 신청이 완료되었습니다!`);
       setMyReservedCourtId(courtId);
       setMyTeamNumber(teamNumber);
-      setSelectedTeam(null);
       fetchCourts();
     }
   };
@@ -1297,9 +1219,6 @@ export default function Home() {
                           return nextTeams.map((teamNum) => {
                             const team = court.waitingTeams?.find(t => t.teamNumber === teamNum);
                             const isFull = team && team.members.length >= 4;
-                            const isInactive = court.is_active === false;
-                            const isUnavailable = isInactive || ['occupied', 'lesson', 'beginner', 'reservation_only', 'maintenance'].includes(court.status);
-                            
                             // 클럽 정합성 비활성화 검증
                             const isDifferentClub = (() => {
                               if (!member || !team || !team.members || team.members.length === 0) return false;

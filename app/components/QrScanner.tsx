@@ -32,7 +32,7 @@ export default function QrScanner({ onScanSuccess, onScanError, onClose }: QrSca
               onScanSuccess(decodedText);
             }
           },
-          (errorMessage) => {
+          () => {
             // Constant parsing noise is ignored by default
           }
         );

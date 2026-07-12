@@ -78,4 +78,4 @@ END $$;
 -- RLS 활성화 및 권한 설정 (stadiums)
 ALTER TABLE stadiums ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Enable read access for all users" ON stadiums FOR SELECT USING (true);
-CREATE POLICY "Enable write access for authenticated users" ON stadiums FOR ALL USING (auth.role() = 'authenticated');
+CREATE POLICY "Enable write access for authenticated users" ON stadiums FOR ALL TO authenticated USING (true) WITH CHECK (true);

@@ -23,10 +23,9 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: `
           if ('serviceWorker' in navigator) {
             window.addEventListener('load', function() {
-              navigator.serviceWorker.register('/sw.js').then(function(reg) {
-                console.log('PWA ServiceWorker registered');
+              navigator.serviceWorker.register('/sw.js').then(function() {
               }).catch(function(err) {
-                console.log('PWA ServiceWorker registration failed: ', err);
+                console.error('PWA ServiceWorker registration failed: ', err);
               });
             });
           }

@@ -1,9 +1,14 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "skipLibCheck": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "strict": true,
     "noEmit": true,
     "esModuleInterop": true,
@@ -20,16 +25,19 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
-    }
+      "@/*": [
+        "./*"
+      ]
+    },
+    "allowJs": true
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
   "exclude": [
-    "node_modules",
-    "src/app/(admin)/players/page_refactored.tsx",
-    "src/app/(admin)/players/page_new_refactored.tsx",
-    "src/app/(admin)/players/page_old.tsx",
-    "src/app/(admin)/players/page_new.tsx",
-    "src/app/(user)/dashboard/ClientDashboard_fixed.tsx"
+    "node_modules"
   ]
 }

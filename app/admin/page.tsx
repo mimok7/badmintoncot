@@ -14,7 +14,6 @@ import {
     Activity,
     Settings,
     ChevronRight,
-    Clock,
     MapPin,
     Printer,
     LogOut
@@ -91,7 +90,6 @@ export default function AdminPage() {
     const [stadiums, setStadiums] = useState<any[]>([]);
     const [currentStadiumId, setCurrentStadiumId] = useState<number | null>(null);
     const [adminRole, setAdminRole] = useState<'superadmin' | 'manager' | null>(null);
-    const [adminStadiumId, setAdminStadiumId] = useState<number | null>(null);
     const [adminUsers, setAdminUsers] = useState<any[]>([]);
     const [newAdminRole, setNewAdminRole] = useState<'superadmin' | 'manager'>('manager');
     const [newAdminTargetStadium, setNewAdminTargetStadium] = useState<number | null>(null);
@@ -136,25 +134,6 @@ export default function AdminPage() {
             fetchAdminUsers();
         }
     }, [isAuthenticated, adminRole, activeMenu]);
-
-    const handleAddAdmin = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!newAdminEmail) return;
-        
-        try {
-            const { error } = await supabase.from('admin_users').insert({
-                email: newAdminEmail,
-                role: newAdminRole,
-                stadium_id: newAdminRole === 'manager' ? newAdminTargetStadium : null
-            });
-            if (error) throw error;
-            alert('관리자가 추가되었습니다.');
-            setNewAdminEmail('');
-            fetchAdminUsers();
-        } catch (err: any) {
-            alert('오류가 발생했습니다: ' + err.message);
-        }
-    };
 
     const handleDeleteAdmin = async (id: number) => {
         if (!confirm('정말 삭제하시겠습니까?')) return;
@@ -276,9 +255,6 @@ export default function AdminPage() {
                 currentRole = adminUser.role;
                 currentAdminStadiumId = adminUser.stadium_id;
                 setAdminRole(currentRole);
-                if (currentRole === 'manager' && currentAdminStadiumId) {
-                    setAdminStadiumId(currentAdminStadiumId);
-                }
             }
 
             // Fetch Stadiums based on role
@@ -417,30 +393,6 @@ export default function AdminPage() {
             fetchSettings();
         } catch (error) {
             alert('위치 정보 저장 중 오류가 발생했습니다.');
-        }
-    };
-
-    const handleCreateAdmin = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!newAdminEmail.trim() || !newAdminPassword.trim()) {
-            alert('이메일과 비밀번호를 입력하세요.');
-            return;
-        }
-        if (newAdminPassword.length < 6) {
-            alert('비밀번호는 최소 6자리 이상이어야 합니다.');
-            return;
-        }
-        try {
-            const { data, error } = await supabase.auth.signUp({
-                email: newAdminEmail.trim(),
-                password: newAdminPassword.trim(),
-            });
-            if (error) throw error;
-            alert('새 관리자 계정이 등록되었습니다!');
-            setNewAdminEmail('');
-            setNewAdminPassword('');
-        } catch (error: any) {
-            alert(`관리자 추가 실패: ${error.message || error}`);
         }
     };
 
@@ -851,18 +803,6 @@ export default function AdminPage() {
         navigator.clipboard.writeText(qrUrl);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
-    };
-
-    const getTimeRemaining = (expiresAt: string) => {
-        const now = new Date().getTime();
-        const expiry = new Date(expiresAt).getTime();
-        const diff = expiry - now;
-
-        if (diff <= 0) return '만료됨';
-
-        const hours = Math.floor(diff / (1000 * 60 * 60));
-        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-        return `${hours}시간 ${minutes}분`;
     };
 
     const getSessionsByHour = () => {
