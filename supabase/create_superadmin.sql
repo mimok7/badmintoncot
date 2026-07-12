@@ -5,6 +5,44 @@
 -- 비밀번호를 입력한 뒤 앞의 -- 를 삭제하고, 이 파일 전체를 한 번에 실행하세요.
 -- select set_config('app.initial_password', '여기에_초기비밀번호_입력', false);
 
+-- Legacy admin schema used by the current /admin page.
+create table if not exists public.stadiums (
+  id serial primary key,
+  name varchar(100) not null,
+  address varchar(255),
+  latitude double precision,
+  longitude double precision,
+  radius_meter integer default 500,
+  created_at timestamptz default now()
+);
+
+insert into public.stadiums (id, name)
+values (1, '기본 구장')
+on conflict (id) do nothing;
+
+create table if not exists public.admin_users (
+  id serial primary key,
+  email varchar(255) unique not null,
+  role varchar(20) not null check (role in ('superadmin', 'manager')),
+  stadium_id integer references public.stadiums(id),
+  created_at timestamptz default now()
+);
+
+alter table public.admin_users enable row level security;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'admin_users'
+      and policyname = 'authenticated admin users can read roles'
+  ) then
+    create policy "authenticated admin users can read roles"
+      on public.admin_users for select to authenticated using (true);
+  end if;
+end;
+$$;
+
 do $$
 declare
   target_email text := 'kys@hyojacho.es.kr';
