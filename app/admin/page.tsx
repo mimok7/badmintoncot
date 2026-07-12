@@ -1717,6 +1717,10 @@ export default function AdminPage() {
                                     }
 
                                     try {
+                                        // Keep the current superadmin session while creating another Auth user.
+                                        const { data: currentSessionData } = await supabase.auth.getSession();
+                                        const currentAdminSession = currentSessionData.session;
+
                                         // 1. Create the login account in Supabase Auth.
                                         const { data: authData, error: authError } = await supabase.auth.signUp({
                                             email,
@@ -1734,6 +1738,13 @@ export default function AdminPage() {
                                         }
                                         if (!authData.user && !existingAuthUser) {
                                             throw new Error('인증 계정이 생성되지 않았습니다. Supabase Auth 설정과 트리거를 확인해주세요.');
+                                        }
+
+                                        if (currentAdminSession) {
+                                            const { error: restoreSessionError } = await supabase.auth.setSession(currentAdminSession);
+                                            if (restoreSessionError) {
+                                                throw new Error(`관리자 세션 복구 실패: ${restoreSessionError.message}`);
+                                            }
                                         }
 
                                         // 2. Upsert the role so retrying after a partial failure is safe.
