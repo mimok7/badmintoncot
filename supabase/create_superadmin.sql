@@ -15,10 +15,6 @@ begin
     raise exception 'Set app.initial_password for this SQL session before running.';
   end if;
 
-  if to_regclass('public.profiles') is null then
-    raise exception 'public.profiles does not exist. Select the app Supabase project or apply the profiles schema first.';
-  end if;
-
   select id into target_user_id
   from auth.users
   where lower(email) = lower(target_email)
@@ -55,13 +51,24 @@ begin
     where id = target_user_id;
   end if;
 
-  update public.profiles
-  set role = 'superadmin', updated_at = now()
-  where user_id = target_user_id;
+  -- Support both schemas used by this project:
+  -- newer member schema: profiles.user_id / profiles.role
+  -- legacy admin schema: admin_users.email / admin_users.role
+  if to_regclass('public.profiles') is not null then
+    update public.profiles
+    set role = 'superadmin', updated_at = now()
+    where user_id = target_user_id;
+  elsif to_regclass('public.admin_users') is not null then
+    insert into public.admin_users (email, role)
+    values (target_email, 'superadmin')
+    on conflict (email) do update
+      set role = 'superadmin';
+  else
+    raise exception 'Neither public.profiles nor public.admin_users exists. Apply the project schema first.';
+  end if;
 end;
 $$;
 
-select u.email, p.role
+select u.email, u.raw_user_meta_data ->> 'role' as auth_role
 from auth.users u
-left join public.profiles p on p.user_id = u.id
 where lower(u.email) = lower('kys@hyojacho.es.kr');
