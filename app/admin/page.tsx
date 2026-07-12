@@ -1725,14 +1725,14 @@ export default function AdminPage() {
                                                 data: { role: newAdminRole },
                                             },
                                         });
-                                        if (authError) {
-                                            throw new Error(
-                                                authError.message.includes('already registered')
-                                                    ? '이미 등록된 이메일입니다. 다른 이메일을 사용해주세요.'
-                                                    : `인증 계정 생성 실패: ${authError.message}`
-                                            );
+                                        const existingAuthUser = Boolean(
+                                            authError &&
+                                            /already registered|duplicate key|users_email_partial_key|23505/i.test(authError.message)
+                                        );
+                                        if (authError && !existingAuthUser) {
+                                            throw new Error(`인증 계정 생성 실패: ${authError.message}`);
                                         }
-                                        if (!authData.user) {
+                                        if (!authData.user && !existingAuthUser) {
                                             throw new Error('인증 계정이 생성되지 않았습니다. Supabase Auth 설정과 트리거를 확인해주세요.');
                                         }
 
@@ -1746,7 +1746,11 @@ export default function AdminPage() {
                                             throw new Error(`관리자 권한 저장 실패: ${dbError.message}`);
                                         }
 
-                                        alert(`${newAdminRole === 'superadmin' ? '최고 관리자' : '매니저'} 계정이 추가되었습니다.`);
+                                        alert(
+                                            existingAuthUser
+                                                ? `기존 Auth 계정에 ${newAdminRole === 'superadmin' ? '최고 관리자' : '매니저'} 권한을 연결했습니다.`
+                                                : `${newAdminRole === 'superadmin' ? '최고 관리자' : '매니저'} 계정이 추가되었습니다.`
+                                        );
                                         setNewAdminEmail('');
                                         setNewAdminPassword('');
                                         setNewAdminTargetStadium(null);
