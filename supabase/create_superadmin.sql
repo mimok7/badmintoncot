@@ -38,37 +38,19 @@ drop policy if exists "Enable write access for authenticated users" on public.ad
 drop policy if exists "authenticated admin users can read roles" on public.admin_users;
 drop policy if exists "authenticated users can manage admin roles" on public.admin_users;
 
-create policy "authenticated users can read admin roles"
-  on public.admin_users for select to authenticated using (true);
-
-create policy "authenticated users can manage admin roles"
-  on public.admin_users for all to authenticated
-  using (true) with check (true);
-
 do $$
 begin
-  if not exists (
-    select 1 from pg_policies
-    where schemaname = 'public' and tablename = 'admin_users'
-      and policyname = 'authenticated admin users can read roles'
-  ) then
-    create policy "authenticated admin users can read roles"
-      on public.admin_users for select to authenticated using (true);
-  end if;
-end;
-$$;
+  drop policy if exists "authenticated users can read admin roles" on public.admin_users;
+  drop policy if exists "authenticated users can manage admin roles" on public.admin_users;
+  drop policy if exists "authenticated admin users can read roles" on public.admin_users;
+  drop policy if exists "authenticated admin users can manage roles" on public.admin_users;
 
-do $$
-begin
-  if not exists (
-    select 1 from pg_policies
-    where schemaname = 'public' and tablename = 'admin_users'
-      and policyname = 'authenticated users can manage admin roles'
-  ) then
-    create policy "authenticated users can manage admin roles"
-      on public.admin_users for all to authenticated
-      using (true) with check (true);
-  end if;
+  create policy "authenticated admin users can read roles"
+    on public.admin_users for select to authenticated using (true);
+
+  create policy "authenticated admin users can manage roles"
+    on public.admin_users for all to authenticated
+    using (true) with check (true);
 end;
 $$;
 
