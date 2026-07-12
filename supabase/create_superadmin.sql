@@ -43,6 +43,20 @@ begin
 end;
 $$;
 
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'admin_users'
+      and policyname = 'authenticated users can manage admin roles'
+  ) then
+    create policy "authenticated users can manage admin roles"
+      on public.admin_users for all to authenticated
+      using (true) with check (true);
+  end if;
+end;
+$$;
+
 -- The legacy project may still have a signup trigger that writes to
 -- public.profiles. Disable only those profile-dependent auth triggers when
 -- that table is absent; otherwise Supabase sign-up returns HTTP 500.
