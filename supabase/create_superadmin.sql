@@ -3,7 +3,7 @@
 -- 2) 이 파일 전체를 한 번에 실행합니다.
 -- 3) 실행 후에는 비밀번호가 포함된 줄을 다시 주석 처리합니다.
 -- 비밀번호를 입력한 뒤 앞의 -- 를 삭제하고, 이 파일 전체를 한 번에 실행하세요.
--- select set_config('app.initial_password', '여기에_초기비밀번호_입력', false);
+select set_config('app.initial_password', 'saintt8928!', false);
 
 -- Legacy admin schema used by the current /admin page.
 create table if not exists public.stadiums (
@@ -39,6 +39,28 @@ begin
   ) then
     create policy "authenticated admin users can read roles"
       on public.admin_users for select to authenticated using (true);
+  end if;
+end;
+$$;
+
+-- The legacy project may still have a signup trigger that writes to
+-- public.profiles. Disable only those profile-dependent auth triggers when
+-- that table is absent; otherwise Supabase sign-up returns HTTP 500.
+do $$
+declare
+  trigger_name text;
+begin
+  if to_regclass('public.profiles') is null then
+    for trigger_name in
+      select t.tgname
+      from pg_trigger t
+      join pg_proc p on p.oid = t.tgfoid
+      where t.tgrelid = 'auth.users'::regclass
+        and not t.tgisinternal
+        and p.proname in ('handle_new_user_signup', 'handle_new_user')
+    loop
+      execute format('drop trigger if exists %I on auth.users', trigger_name);
+    end loop;
   end if;
 end;
 $$;
