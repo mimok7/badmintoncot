@@ -1348,12 +1348,14 @@ export default function AdminPage() {
                                                 court.status === 'occupied' ? 'bg-amber-100 text-amber-700 border border-amber-200' :
                                                 court.status === 'lesson' ? 'bg-rose-100 text-rose-700 border border-rose-200' :
                                                 court.status === 'beginner' ? 'bg-violet-100 text-violet-700 border border-violet-200' :
+                                                court.status === 'reservation_only' ? 'bg-blue-100 text-blue-700 border border-blue-200' :
                                                 'bg-slate-100 text-slate-700 border border-slate-200'
                                                 }`}>
                                                 {court.status === 'available' ? '사용가능' :
                                                  court.status === 'occupied' ? '사용중' :
                                                  court.status === 'lesson' ? '레슨중' :
-                                                 court.status === 'beginner' ? '초보연습' : '수리중'}
+                                                 court.status === 'beginner' ? '초보연습' :
+                                                 court.status === 'reservation_only' ? '예약 전용' : '수리중'}
                                             </span>
                                         </div>
 
@@ -1501,6 +1503,7 @@ export default function AdminPage() {
                                                         className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                                     >
                                                         <option value="available">사용 가능</option>
+                                                        <option value="reservation_only">예약 전용</option>
                                                         <option value="lesson">레슨중</option>
                                                         <option value="beginner">초보자 연습중</option>
                                                         <option value="maintenance">수리중</option>

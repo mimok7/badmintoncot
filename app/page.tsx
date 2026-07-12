@@ -1198,12 +1198,15 @@ export default function Home() {
                       ? 'bg-gradient-to-r from-rose-50 to-red-50 text-rose-600 border border-rose-200/50'
                       : court.status === 'beginner'
                       ? 'bg-gradient-to-r from-violet-50 to-purple-50 text-violet-600 border border-violet-200/50'
+                      : court.status === 'reservation_only'
+                      ? 'bg-gradient-to-r from-blue-50 to-cyan-50 text-blue-600 border border-blue-200/50'
                       : 'bg-gradient-to-r from-slate-100 to-slate-200 text-slate-600 border border-slate-300/50'
                   }`}>
                     {court.status === 'available' ? '사용가능' :
                      court.status === 'occupied' ? '사용중' :
                      court.status === 'lesson' ? '레슨중' :
-                     court.status === 'beginner' ? '초보연습' : '수리중'}
+                     court.status === 'beginner' ? '초보연습' :
+                     court.status === 'reservation_only' ? '예약 전용' : '수리중'}
                   </span>
                 </div>
 
@@ -1295,7 +1298,7 @@ export default function Home() {
                             const team = court.waitingTeams?.find(t => t.teamNumber === teamNum);
                             const isFull = team && team.members.length >= 4;
                             const isInactive = court.is_active === false;
-                            const isUnavailable = isInactive || ['occupied', 'lesson', 'beginner', 'maintenance'].includes(court.status);
+                            const isUnavailable = isInactive || ['occupied', 'lesson', 'beginner', 'reservation_only', 'maintenance'].includes(court.status);
                             
                             // 클럽 정합성 비활성화 검증
                             const isDifferentClub = (() => {
@@ -1309,7 +1312,7 @@ export default function Home() {
                                 key={teamNum}
                                 onClick={() => handleReserve(court.id, teamNum)}
                                 className={`py-2 px-2 text-[11px] rounded-lg font-bold transition-all shadow-sm flex items-center justify-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95 ${
-                                  isFull || court.is_active === false || ['occupied', 'lesson', 'beginner', 'maintenance'].includes(court.status)
+                                  isFull || court.is_active === false || ['occupied', 'lesson', 'beginner', 'reservation_only', 'maintenance'].includes(court.status)
                                     ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
                                     : isDifferentClub
                                     ? 'bg-slate-100 text-slate-400 border border-slate-200/50 cursor-not-allowed'
@@ -1317,7 +1320,7 @@ export default function Home() {
                                     ? 'bg-slate-300 text-slate-600'
                                     : 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white hover:from-indigo-700 hover:to-indigo-800'
                                 }`}
-                                disabled={!session || myReservedCourtId !== null || isFull || court.is_active === false || ['occupied', 'lesson', 'beginner', 'maintenance'].includes(court.status) || isDifferentClub}
+                                disabled={!session || myReservedCourtId !== null || isFull || court.is_active === false || ['occupied', 'lesson', 'beginner', 'reservation_only', 'maintenance'].includes(court.status) || isDifferentClub}
                               >
                                 {isDifferentClub ? '클럽다름' : `신청 ${teamNum}`}
                                 {team && <span className="text-[10px]">({team.members.length}/4)</span>}
@@ -1328,12 +1331,13 @@ export default function Home() {
                         })()}
                       </div>
                       
-                      {(court.is_active === false || ['occupied', 'lesson', 'beginner', 'maintenance'].includes(court.status)) && (
+                      {(court.is_active === false || ['occupied', 'lesson', 'beginner', 'reservation_only', 'maintenance'].includes(court.status)) && (
                         <p className="text-[10px] text-rose-500 text-center font-bold">
                           {court.is_active === false ? '⛔ 사용 중지된 코트 (예약 불가)' :
                            court.status === 'occupied' ? '🏸 사용 중인 코트 (예약 불가)' :
                            court.status === 'lesson' ? '🎾 레슨 중 (예약 불가)' :
                            court.status === 'beginner' ? '🐣 초보자 연습 중 (예약 불가)' :
+                           court.status === 'reservation_only' ? '🎟️ 예약 전용 코트 (일반 신청 불가)' :
                            '🛠️ 코트 수리 중 (예약 불가)'}
                         </p>
                       )}
