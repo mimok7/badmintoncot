@@ -30,6 +30,21 @@ create table if not exists public.admin_users (
 
 alter table public.admin_users enable row level security;
 
+grant select, insert, update, delete on public.admin_users to authenticated;
+grant usage, select on sequence public.admin_users_id_seq to authenticated;
+
+drop policy if exists "Enable read access for authenticated users" on public.admin_users;
+drop policy if exists "Enable write access for authenticated users" on public.admin_users;
+drop policy if exists "authenticated admin users can read roles" on public.admin_users;
+drop policy if exists "authenticated users can manage admin roles" on public.admin_users;
+
+create policy "authenticated users can read admin roles"
+  on public.admin_users for select to authenticated using (true);
+
+create policy "authenticated users can manage admin roles"
+  on public.admin_users for all to authenticated
+  using (true) with check (true);
+
 do $$
 begin
   if not exists (
