@@ -27,6 +27,7 @@ interface Court {
   id: number;
   name: string;
   status: string;
+  is_active?: boolean;
   current_users_count: number;
   current_playing_team: number | null;
   waitingMembers?: string[];
@@ -648,11 +649,12 @@ export default function Home() {
       localStorage.setItem('badminton_member_club_name', data.club_name || '');
       setMember(data);
       
-      // 자동으로 입장 처리. ID는 DB 기본값을 사용해 프로젝트별 스키마 차이를 피한다.
+      // kmswg entry_sessions.id has no database default, so provide the UUID explicitly.
       const expiresAt = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
+      const entryId = crypto.randomUUID();
       const { data: entryData, error: entryError } = await supabase
         .from('entry_sessions')
-        .insert({ user_id: data.id, expires_at: expiresAt, stadium_id: currentStadium?.id })
+        .insert({ id: entryId, user_id: data.id, expires_at: expiresAt, stadium_id: currentStadium?.id })
         .select()
         .single();
       
@@ -694,9 +696,10 @@ export default function Home() {
     }
 
     const expiresAt = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
+    const entryId = crypto.randomUUID();
     const { data, error } = await supabase
       .from('entry_sessions')
-      .insert({ user_id: member.id, expires_at: expiresAt, stadium_id: currentStadium?.id })
+      .insert({ id: entryId, user_id: member.id, expires_at: expiresAt, stadium_id: currentStadium?.id })
       .select()
       .single();
 
@@ -1291,7 +1294,8 @@ export default function Home() {
                           return nextTeams.map((teamNum) => {
                             const team = court.waitingTeams?.find(t => t.teamNumber === teamNum);
                             const isFull = team && team.members.length >= 4;
-                            const isUnavailable = ['lesson', 'beginner', 'maintenance'].includes(court.status);
+                            const isInactive = court.is_active === false;
+                            const isUnavailable = isInactive || ['occupied', 'lesson', 'beginner', 'maintenance'].includes(court.status);
                             
                             // 클럽 정합성 비활성화 검증
                             const isDifferentClub = (() => {
@@ -1324,9 +1328,11 @@ export default function Home() {
                         })()}
                       </div>
                       
-                      {['lesson', 'beginner', 'maintenance'].includes(court.status) && (
+                      {(court.is_active === false || ['occupied', 'lesson', 'beginner', 'maintenance'].includes(court.status)) && (
                         <p className="text-[10px] text-rose-500 text-center font-bold">
-                          {court.status === 'lesson' ? '🎾 레슨 중 (예약 불가)' :
+                          {court.is_active === false ? '⛔ 사용 중지된 코트 (예약 불가)' :
+                           court.status === 'occupied' ? '🏸 사용 중인 코트 (예약 불가)' :
+                           court.status === 'lesson' ? '🎾 레슨 중 (예약 불가)' :
                            court.status === 'beginner' ? '🐣 초보자 연습 중 (예약 불가)' :
                            '🛠️ 코트 수리 중 (예약 불가)'}
                         </p>
