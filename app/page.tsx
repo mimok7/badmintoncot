@@ -1021,7 +1021,9 @@ export default function Home() {
             <div className="w-8 h-8 rounded-[0.5rem] overflow-hidden shadow-md border border-slate-100">
               <img src="/logo.png" alt="BadmintonCot Logo" className="w-full h-full object-cover" />
             </div>
-            <h1 className="text-base font-black bg-gradient-to-r from-indigo-600 to-indigo-700 bg-clip-text text-transparent tracking-tight">COT</h1>
+            <h1 className="max-w-[150px] truncate text-base font-black bg-gradient-to-r from-indigo-600 to-indigo-700 bg-clip-text text-transparent tracking-tight" title={venueName}>
+              {venueName || '배드민턴 코트'}
+            </h1>
           </div>
           <div className="flex items-center gap-1.5">
             {/* 로그인 후 실시간 클럽 변경 셀렉트 박스 */}
