@@ -1,186 +1,194 @@
-# 배드민턴 코트 예약 시스템
+# 배드민턴 클럽 관리 시스템
 
-QR 코드 기반 로그인 시스템을 갖춘 실시간 배드민턴 코트 예약 애플리케이션입니다.
+라켓 뚱보단을 위한 종합 배드민턴 클럽 관리 시스템입니다.
 
-## 🚀 주요 기능
+## 주요 기능
 
-### 1. 관리자 대시보드
-- **사이드바 네비게이션**: 4개 주요 메뉴 간 쉬운 전환
-- **QR 생성**: 사용자 입장용 QR 코드 생성 및 관리
-- **코트 현황**: 8개 코트의 실시간 상태 및 대기 인원 모니터링
-- **사용 현황**: 시간대별 입장 통계 및 활성 세션 관리
-- **환경설정**: 배드민턴장 정보, 운영시간, 이용규칙 설정
+### 🏸 경기 관리
+- **게임 생성**: 랜덤, 레벨별, 남녀복식 게임 자동 생성
+- **공정한 배정**: 모든 선수가 누락 없이 경기에 참여하도록 보장
+- **실시간 게임 수 추적**: 각 선수의 게임 참여 횟수 실시간 표시
+- **팀 구성 기반 배정**: 라켓팀/셔틀팀 구성으로 경기 자동 배정
 
-### 2. QR 코드 기반 인증
-- 관리자가 생성한 QR 코드를 스캔하여 시스템 접근
-- 안전하고 편리한 로그인 프로세스
-- 세션 기반 인증 시스템
+### 🏆 대회 관리 (신규)
+- **팀 구성 기반 대회**: 오늘의 팀 구성을 선택하여 대회 생성
+- **출석 자동 필터링**: 출석한 선수만 자동으로 경기 배정
+- **균등 분배 알고리즘**: 1인당 게임 수를 설정하여 공정하게 배정
+- **경기 타입**: 레벨별/랜덤/혼복 선택 가능
+- **점수 입력**: 실시간 점수 입력 및 승패 자동 판정
+- **선수별 통계**: 게임 수, 승/패/무, 승률 자동 계산
 
-### 3. 실시간 코트 관리
-- 8개 코트의 실시간 상태 확인
-- 대기 인원 자동 업데이트
-- 2시간 이용 시간 자동 관리
+### 📅 경기일 관리
+- **일정 관리**: 경기 날짜, 시간, 장소 등록 및 관리
+- **참가자 관리**: 경기별 최대 인원 설정 및 참가 신청 관리
+- **상태 추적**: 예정/진행중/완료/취소 상태별 관리
+- **참가 신청**: 회원이 직접 경기 참가 신청/취소 가능
 
-### 4. 자동 매칭 시스템
-- 4명이 모이면 자동으로 예약 확정
-- 실시간 대기 현황 표시
+### 👥 회원 관리
+- **출석 관리**: 일별 출석 체크 및 상태 관리 (출석/레슨/불참)
+- **레벨 관리**: 선수별 기술 레벨 관리 (랍스터~닭갈비)
+- **프로필 관리**: 회원 정보 및 기술 수준 관리
 
-### 5. 사용 통계 및 분석
-- 시간대별 사용자 입장 현황
-- 현재 활성 사용자 수 실시간 표시
-- 세션별 남은 시간 추적
+### 📊 대시보드
+- **실시간 현황**: 오늘의 출석 현황 실시간 표시
+- **통계 정보**: 레벨별, 상태별 회원 분포 현황
+- **색상 코딩**: 직관적인 핑크 색상 시스템으로 상태 표시
 
-## 📱 사용 플로우
+## 기술 스택
 
-### 관리자
-1. `/admin` 페이지 접속
-2. QR 코드 생성 및 표시
-3. 사용자가 스캔할 수 있도록 화면 표시 또는 인쇄
+- **Frontend**: Next.js 15, React 19, TypeScript, Tailwind CSS
+- **Backend**: Supabase (PostgreSQL, Authentication, RLS, Realtime)
+- **State Management**: React Context API with optimized caching
+- **Performance**: Optimized bundle splitting, lazy loading, memoization
+- **Deployment**: Vercel
 
-### 사용자
-1. 입구의 QR 코드를 스마트폰으로 스캔
-2. 자동으로 로그인 페이지로 이동
-3. 닉네임 설정
-4. QR 입장하기 (2시간 이용권 발급)
-5. 원하는 코트에 대기 신청
+## 성능 최적화
 
-## 🛠️ 기술 스택
+### 🚀 로딩 성능 개선사항
+- **Supabase 클라이언트 최적화**: 싱글톤 패턴으로 중복 생성 방지
+- **React 메모이제이션**: useCallback, useMemo를 활용한 불필요한 리렌더링 방지
+- **데이터 캐싱**: 프로필 및 일정 데이터 5분간 캐싱
+- **컴포넌트 최적화**: 로딩 상태 개선 및 레이지 로딩 적용
+- **번들 최적화**: Next.js 15의 최신 최적화 기능 활용
 
-- **Frontend**: Next.js 14, React 18, TypeScript
-- **Styling**: Tailwind CSS
-- **Database**: Supabase (PostgreSQL)
-- **Real-time**: Supabase Realtime
-- **Icons**: Lucide React
-- **QR Code**: qrcode.react
+### 📊 성능 모니터링
+- 개발 환경에서 페이지 로드 시간 자동 측정
+- 3초 이상 로딩 시 자동 경고
+- Web Vitals 지표 추적
 
-## 📦 설치 방법
+### ⚡ 추가 최적화 기능
+- **압축**: Gzip 압축 활성화
+- **이미지 최적화**: WebP/AVIF 포맷 지원
+- **정적 파일 최적화**: 캐싱 및 CDN 활용
 
-### 1. 저장소 클론
+## 데이터베이스 구조
+
+### 핵심 테이블
+- `profiles`: 사용자 프로필 정보
+- `attendances`: 출석 관리
+- `match_schedules`: 경기 일정 관리
+- `match_participants`: 경기 참가자 관리
+- `level_info`: 레벨 정보 관리
+- `team_assignments`: 팀 구성 관리 (라켓팀/셔틀팀)
+- `tournaments`: 대회 정보 관리 (신규)
+- `tournament_matches`: 대회 경기 정보 (신규)
+
+## 설치 및 실행
+
+### 1. 프로젝트 클론
 ```bash
-git clone https://github.com/mimok7/badmintoncot.git
-cd badmintoncot
+git clone [repository-url]
+cd badminton-club-management
 ```
 
-### 2. 패키지 설치
+### 2. 의존성 설치
 ```bash
 npm install
+# 또는
+yarn install
 ```
 
 ### 3. 환경 변수 설정
-`.env.local` 파일을 생성하고 다음 내용을 추가하세요:
-```env
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-NEXT_PUBLIC_QR_SESSION_ID=qr_entrance_fixed_2024
+`.env.local` 파일을 생성하고 다음 변수들을 설정:
+```bash
+NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
 ```
 
-### 4. Supabase 데이터베이스 설정
-
-#### 4-1. Supabase 프로젝트 생성
-1. [Supabase](https://supabase.com) 에서 프로젝트 생성
-2. Project Settings → API에서 `URL`과 `anon public` 키 복사
-3. `.env.local`에 추가
-
-#### 4-2. 데이터베이스 스키마 생성
-Supabase Dashboard → SQL Editor에서 다음 파일들을 순서대로 실행:
-
-1. **기본 스키마 생성**: `supabase/schema.sql`
-2. **추가 기능**: `supabase/schema_additions.sql`
-3. **RLS 정책 설정**: `supabase/rls_policies.sql` ⭐ **중요!**
-
-> ⚠️ **중요**: `rls_policies.sql`을 반드시 실행해야 합니다. 
-> 이 파일이 없으면 익명 사용자가 데이터베이스에 접근할 수 없어 오류가 발생합니다.
+### 4. 데이터베이스 설정
+`sql/create_match_schedules.sql` 파일을 Supabase에서 실행하여 필요한 테이블들을 생성합니다.
 
 ### 5. 개발 서버 실행
 ```bash
 npm run dev
+# 또는
+yarn dev
 ```
 
-브라우저에서 `http://localhost:3000` 접속
+브라우저에서 [http://localhost:3000](http://localhost:3000)을 열어 확인합니다.
 
-## 🚀 배포 (Vercel)
+## 페이지 구조
 
-### 1. Vercel에 배포
-```bash
-vercel
-```
+- `/` - 홈페이지
+- `/dashboard` - 대시보드 (출석 현황)
+- `/players` - 게임 생성 페이지
+- `/match-registration` - 경기 참가 신청
+- `/match-schedule` - 경기일 관리 (관리자)
+- `/admin` - 관리자 페이지
+- `/admin/players-today` - 오늘 게임 생성/배정 (팀 구성 기반)
+- `/tournament-bracket` - 대회 대진표 (신규)
+- `/my-tournament-matches` - 내 대회 경기 (신규)
 
-### 2. 환경 변수 설정
-Vercel Dashboard → Settings → Environment Variables에 추가:
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `NEXT_PUBLIC_QR_SESSION_ID`
+## 주요 알고리즘
 
-### 3. 재배포
-환경 변수 추가 후 자동으로 재배포됩니다.
-- **Database**: Supabase
-- **QR Code**: qrcode.react
-- **Icons**: Lucide React
+### 공정한 게임 배정
+모든 게임 생성 방식에서 참여자가 누락되지 않도록 하는 알고리즘:
 
-## 📂 페이지 구조
+1. **기본 게임 생성**: 4명씩 그룹으로 기본 게임 생성
+2. **남은 선수 처리**: 
+   - 1명 남음: 기존 참여자 3명과 추가 게임
+   - 2명 남음: 기존 참여자 2명과 추가 게임  
+   - 3명 남음: 기존 참여자 1명과 추가 게임
+3. **참여 추적**: 모든 선수의 게임 참여 횟수 실시간 추적
 
-```
-/                 - 메인 페이지 (코트 현황 및 예약)
-/admin            - 관리자 페이지 (QR 코드 생성)
-/scan?session=... - QR 스캔 처리 페이지
-```
+### 레벨 시스템
+- **랍스터**: 최고 레벨
+- **소갈비 (A)**: 상급
+- **돼지갈비 (B)**: 중상급
+- **양갈비 (C)**: 중급
+- **닭갈비 (D)**: 초중급
+- **E**: 초급
+- **N**: 미지정
 
-## 🔐 보안 기능
+## 보안 및 권한
 
-- QR 세션 검증
-- localStorage 기반 회원 정보 저장
-- 세션 만료 시 자동 로그아웃
-- 유효하지 않은 QR 코드 차단
+- **RLS (Row Level Security)**: Supabase RLS를 통한 데이터 보안
+- **인증**: Supabase Auth를 통한 사용자 인증
+- **권한 관리**: 관리자/일반 사용자 구분
 
-## 🎨 디자인 특징
+## 배포
 
-- 모던하고 세련된 그라데이션 UI
-- 반응형 디자인 (모바일/태블릿/데스크톱)
-- 부드러운 애니메이션 효과
-- 직관적인 사용자 경험
+이 프로젝트는 [Vercel Platform](https://vercel.com)에 배포됩니다.
 
-## 🚦 시작하기
+1. GitHub에 코드 푸시
+2. Vercel에서 프로젝트 연결
+3. 환경 변수 설정
+4. 자동 배포
 
-### 개발 서버 실행
-```bash
-npm run dev
-```
+## 개발 가이드
 
-### 관리자 페이지 접속
-```
-http://localhost:3000/admin
-```
+### 용어 규칙
+- `경기`: 일별로 편성되는 한 건의 매치 일정 전체를 뜻합니다.
+- `게임`: 한 `경기` 안에서 실제로 맞붙는 선수들 간의 개별 승부를 뜻합니다.
+- 문서, UI 문구, 변수명, 주석을 작성할 때 위 기준을 우선 적용합니다.
 
-### 사용자 페이지 접속
-```
-http://localhost:3000
-```
+### UI 표시 규칙
+- 한 페이지 안에서는 같은 의미의 정보, 상태, 일정, 팀 구성, 유형 문구를 중복 표시하지 않습니다.
+- 이미 제목, 배지, 보조 문구, 카드 본문 중 한 곳에서 충분히 전달한 정보는 다른 위치에서 반복하지 않고, 꼭 필요한 경우에만 한 번 더 표시합니다.
+- 화면을 수정할 때는 정보 추가보다 중복 제거와 가독성 개선을 우선합니다.
 
-## 📋 환경 변수
+### 한글화 규칙
+- 모든 설명, 안내 문구, 채팅창 이름 등 사용자에게 노출되는 모든 텍스트는 한국어(한글)로 표시하도록 한글화합니다.
 
-`.env.local` 파일에 다음 변수를 설정하세요:
+### 새로운 기능 추가 시
+1. 타입 정의 (`src/types.ts`)
+2. 컴포넌트 작성
+3. 데이터베이스 스키마 수정 (필요시)
+4. RLS 정책 업데이트 (필요시)
 
-```env
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-```
+### 코드 스타일
+- TypeScript 엄격 모드 사용
+- Tailwind CSS로 스타일링
+- 컴포넌트 단위 개발
+- console.log를 활용한 디버깅
 
-## 🗄️ 데이터베이스 구조
+## 문의 및 지원
 
-### members
-- 회원 정보 저장
-- 자동 증가 회원 번호
+배드민턴 클럽 관련 문의는 관리자에게 연락하세요.
 
-### entry_sessions
-- 입장 세션 관리
-- 2시간 자동 만료
+## 관련 문서
 
-### courts
-- 코트 정보 및 상태
-
-### reservations
-- 코트 대기 목록 관리
-
-## 📝 라이선스
-
-MIT License
+- [대회 시스템 가이드](./TOURNAMENT_SYSTEM_GUIDE.md) - 대회 시스템 상세 가이드
+- [일반 경기 시스템 가이드](./RECURRING_MATCH_GUIDE.md) - 일반 경기 시스템
+- [경기 시스템 설정](./SETUP_MATCH_SYSTEM.md) - 경기 시스템 설정 방법
+- [데이터베이스 스키마](./database_schema.sql) - 전체 DB 스키마
