@@ -1700,34 +1700,57 @@ export default function AdminPage() {
                                 </h3>
                                 <form onSubmit={async (e) => {
                                     e.preventDefault();
-                                    if (!newAdminEmail.trim() || !newAdminPassword.trim()) {
+                                    const email = newAdminEmail.trim().toLowerCase();
+                                    const password = newAdminPassword.trim();
+
+                                    if (!email || !password) {
                                         alert('이메일과 비밀번호를 입력해주세요.');
                                         return;
                                     }
-                                    if (newAdminPassword.length < 6) {
+                                    if (password.length < 6) {
                                         alert('비밀번호는 6자리 이상이어야 합니다.');
                                         return;
                                     }
-                                    try {
-                                        // 1. Supabase Auth에 계정 생성
-                                        const { data: authData, error: authError } = await supabase.auth.signUp({
-                                            email: newAdminEmail.trim(),
-                                            password: newAdminPassword.trim(),
-                                        });
-                                        if (authError) throw authError;
+                                    if (newAdminRole === 'manager' && !newAdminTargetStadium) {
+                                        alert('매니저가 담당할 구장을 선택해주세요.');
+                                        return;
+                                    }
 
-                                        // 2. admin_users 테이블에 역할 및 구장 추가
-                                        const { error: dbError } = await supabase.from('admin_users').insert({
-                                            email: newAdminEmail.trim(),
+                                    try {
+                                        // 1. Create the login account in Supabase Auth.
+                                        const { data: authData, error: authError } = await supabase.auth.signUp({
+                                            email,
+                                            password,
+                                            options: {
+                                                data: { role: newAdminRole },
+                                            },
+                                        });
+                                        if (authError) {
+                                            throw new Error(
+                                                authError.message.includes('already registered')
+                                                    ? '이미 등록된 이메일입니다. 다른 이메일을 사용해주세요.'
+                                                    : `인증 계정 생성 실패: ${authError.message}`
+                                            );
+                                        }
+                                        if (!authData.user) {
+                                            throw new Error('인증 계정이 생성되지 않았습니다. Supabase Auth 설정과 트리거를 확인해주세요.');
+                                        }
+
+                                        // 2. Upsert the role so retrying after a partial failure is safe.
+                                        const { error: dbError } = await supabase.from('admin_users').upsert({
+                                            email,
                                             role: newAdminRole,
                                             stadium_id: newAdminRole === 'manager' ? newAdminTargetStadium : null
-                                        });
-                                        if (dbError) throw dbError;
+                                        }, { onConflict: 'email' });
+                                        if (dbError) {
+                                            throw new Error(`관리자 권한 저장 실패: ${dbError.message}`);
+                                        }
 
                                         alert(`${newAdminRole === 'superadmin' ? '최고 관리자' : '매니저'} 계정이 추가되었습니다.`);
                                         setNewAdminEmail('');
                                         setNewAdminPassword('');
-                                        fetchAdminUsers();
+                                        setNewAdminTargetStadium(null);
+                                        await fetchAdminUsers();
                                     } catch (err: any) {
                                         alert('추가 실패: ' + err.message);
                                     }
