@@ -1,0 +1,22 @@
+{
+  "name": "민턴 코트",
+  "short_name": "민턴 코트",
+  "description": "실시간 배드민턴 코트 현황 확인 및 4인 대기 매칭 시스템",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#4f46e5",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/badcotlogo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/badcotlogo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
