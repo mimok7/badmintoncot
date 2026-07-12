@@ -94,6 +94,66 @@ begin
 end;
 $$;
 
+-- Repair the legacy statistics trigger. The old ON CONFLICT(stat_date)
+-- clause fails after stadium-scoped unique constraints are introduced.
+create or replace function public.update_daily_statistics()
+returns trigger
+language plpgsql
+as $$
+begin
+  if tg_table_name = 'entry_sessions' and tg_op = 'INSERT' then
+    update public.daily_statistics
+    set total_entries = coalesce(total_entries, 0) + 1,
+        updated_at = now()
+    where stat_date = current_date;
+    if not found then
+      begin
+        insert into public.daily_statistics (stat_date, total_entries)
+        values (current_date, 1);
+      exception when unique_violation then
+        update public.daily_statistics
+        set total_entries = coalesce(total_entries, 0) + 1,
+            updated_at = now()
+        where stat_date = current_date;
+      end;
+    end if;
+  elsif tg_table_name = 'reservations' and tg_op = 'INSERT' then
+    update public.daily_statistics
+    set total_reservations = coalesce(total_reservations, 0) + 1,
+        updated_at = now()
+    where stat_date = current_date;
+    if not found then
+      begin
+        insert into public.daily_statistics (stat_date, total_reservations)
+        values (current_date, 1);
+      exception when unique_violation then
+        update public.daily_statistics
+        set total_reservations = coalesce(total_reservations, 0) + 1,
+            updated_at = now()
+        where stat_date = current_date;
+      end;
+    end if;
+  elsif tg_table_name = 'court_usage' and tg_op = 'INSERT' then
+    update public.daily_statistics
+    set total_matches = coalesce(total_matches, 0) + 1,
+        updated_at = now()
+    where stat_date = current_date;
+    if not found then
+      begin
+        insert into public.daily_statistics (stat_date, total_matches)
+        values (current_date, 1);
+      exception when unique_violation then
+        update public.daily_statistics
+        set total_matches = coalesce(total_matches, 0) + 1,
+            updated_at = now()
+        where stat_date = current_date;
+      end;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
 do $$
 declare
   target_email text := 'kys@hyojacho.es.kr';
