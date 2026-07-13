@@ -1532,6 +1532,10 @@ export default function AdminPage() {
                                         alert('이메일과 비밀번호를 입력해주세요.');
                                         return;
                                     }
+                                    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                                        alert('올바른 이메일 주소를 입력해주세요.');
+                                        return;
+                                    }
                                     if (password.length < 6) {
                                         alert('비밀번호는 6자리 이상이어야 합니다.');
                                         return;
@@ -1550,16 +1554,19 @@ export default function AdminPage() {
                                         const { data: authData, error: authError } = await supabase.auth.signUp({
                                             email,
                                             password,
-                                            options: {
-                                                data: { role: newAdminRole },
-                                            },
                                         });
                                         const existingAuthUser = Boolean(
                                             authError &&
-                                            /already registered|duplicate key|users_email_partial_key|23505/i.test(authError.message)
+                                            (authError.code === 'user_already_exists' ||
+                                                /already registered|already exists|duplicate key|users_email_partial_key|23505/i.test(authError.message))
                                         );
                                         if (authError && !existingAuthUser) {
-                                            throw new Error(`인증 계정 생성 실패: ${authError.message}`);
+                                            const authMessage = /password/i.test(authError.message)
+                                                ? '비밀번호가 Supabase Auth 정책에 맞지 않습니다. 6자리 이상이며 유출된 비밀번호가 아닌 값을 사용해주세요.'
+                                                : /email/i.test(authError.message)
+                                                    ? '이메일 형식이 올바르지 않거나 이메일 가입이 허용되지 않은 주소입니다.'
+                                                    : authError.message;
+                                            throw new Error(`인증 계정 생성 실패: ${authMessage}`);
                                         }
                                         if (!authData.user && !existingAuthUser) {
                                             throw new Error('인증 계정이 생성되지 않았습니다. Supabase Auth 설정과 트리거를 확인해주세요.');
@@ -1612,8 +1619,9 @@ export default function AdminPage() {
                                             type="password"
                                             value={newAdminPassword}
                                             onChange={(e) => setNewAdminPassword(e.target.value)}
-                                            placeholder="비밀번호 입력"
+                                            placeholder="비밀번호 입력 (6자리 이상)"
                                             className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                            minLength={6}
                                             required
                                         />
                                     </div>
