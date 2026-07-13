@@ -77,7 +77,7 @@ export default function AdminPage() {
         rules: '• 코트 이용 시간은 2시간으로 제한됩니다.\n• 4명이 모여야 코트 사용이 가능합니다.\n• 안전을 위해 운동화를 착용해주세요.\n• 코트 내 음식물 반입을 금지합니다.',
         courtCount: 8,
         durationMinutes: 120,
-        useGeofence: false,
+        useGeofence: true,
         locationLat: 37.5665,
         locationLng: 126.9780,
         locationRadius: 100
@@ -323,16 +323,14 @@ export default function AdminPage() {
             // Append court_count & duration_minutes & geofence info hidden metadata to rules text
             const rulesWithMetadata = `${settings.rules}\n\n[court_count:${settings.courtCount}][duration_minutes:${settings.durationMinutes || 120}][use_geofence:${settings.useGeofence}][location_lat:${settings.locationLat}][location_lng:${settings.locationLng}][location_radius:${settings.locationRadius}]`;
 
-            // Supabase settings 테이블에 저장 (id=1로 upsert)
-            // Update stadium info only if superadmin
-            if (adminRole === 'superadmin') {
-                await supabase.from('stadiums').update({
-                    name: settings.venueName,
-                    latitude: settings.locationLat,
-                    longitude: settings.locationLng,
-                    radius_meter: settings.locationRadius
-                }).eq('id', currentStadiumId);
-            }
+            // 위치 판정은 모든 화면에서 stadiums를 기준으로 하므로 항상 함께 저장합니다.
+            const { error: stadiumError } = await supabase.from('stadiums').update({
+                name: settings.venueName,
+                latitude: settings.locationLat,
+                longitude: settings.locationLng,
+                radius_meter: settings.locationRadius
+            }).eq('id', currentStadiumId);
+            if (stadiumError) throw stadiumError;
 
             const { error } = await supabase
                 .from('settings')
@@ -369,6 +367,13 @@ export default function AdminPage() {
         try {
             const rulesWithMetadata = `${settings.rules}\n\n[court_count:${settings.courtCount}][duration_minutes:${settings.durationMinutes || 120}][use_geofence:${settings.useGeofence}][location_lat:${settings.locationLat}][location_lng:${settings.locationLng}][location_radius:${settings.locationRadius}]`;
 
+            const { error: stadiumError } = await supabase.from('stadiums').update({
+                latitude: settings.locationLat,
+                longitude: settings.locationLng,
+                radius_meter: settings.locationRadius
+            }).eq('id', currentStadiumId);
+            if (stadiumError) throw stadiumError;
+
             const { error } = await supabase
                 .from('settings')
                 .upsert({
@@ -399,7 +404,7 @@ export default function AdminPage() {
     useEffect(() => {
         const host = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
         setBaseUrl(host);
-        generateQRWithFixedSession(host);
+        generateSiteQRCode(host);
 
         if (!currentStadiumId) return;
 
@@ -572,12 +577,20 @@ export default function AdminPage() {
         }
     }, [settings.locationLat, settings.locationLng]);
 
-    const generateQRWithFixedSession = (currentBaseUrl?: string) => {
-        const fixedSessionId = process.env.NEXT_PUBLIC_QR_SESSION_ID || 'qr_entrance_fixed_2024';
+
+    // QR은 입장 인증이 아니라 최초 사이트 접속/앱 설치용 주소만 제공합니다.
+    const generateSiteQRCode = (currentBaseUrl?: string) => {
         const host = currentBaseUrl || baseUrl;
-        const url = `${host}/scan?session=${fixedSessionId}`;
-        setQrUrl(url);
+        setQrUrl(host ? `${host}/` : '');
     };
+
+    const copyToClipboard = () => {
+        navigator.clipboard.writeText(qrUrl);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    const handlePrint = () => window.print();
 
     const fetchCourts = async () => {
         if (!currentStadiumId) return;
@@ -678,13 +691,8 @@ export default function AdminPage() {
                     if (matchDuration) loadedDuration = parseInt(matchDuration[1], 10);
                 }
 
-                let loadedUseGeofence = false;
-                if (data.use_geofence !== null && data.use_geofence !== undefined) {
-                    loadedUseGeofence = Boolean(data.use_geofence);
-                } else {
-                    const matchGeofence = rulesText.match(/\[use_geofence:(\w+)\]/);
-                    if (matchGeofence) loadedUseGeofence = matchGeofence[1] === 'true';
-                }
+                // 입장 방식은 항상 위치 기반으로 고정합니다.
+                const loadedUseGeofence = true;
 
                 let loadedLat = 37.5665;
                 if (data.location_lat !== null && data.location_lat !== undefined) {
@@ -799,12 +807,6 @@ export default function AdminPage() {
         }
     };
 
-    const copyToClipboard = () => {
-        navigator.clipboard.writeText(qrUrl);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    };
-
     const getSessionsByHour = () => {
         const timeMap: { [key: string]: number } = {};
         const now = new Date();
@@ -834,113 +836,8 @@ export default function AdminPage() {
             .map(([time, count]) => ({ hour: time, count }));
     };
 
-    const handlePrint = async () => {
-        const printWindow = window.open('', '_blank');
-        if (!printWindow) return;
-
-        // QR Canvas 추출
-        const canvas = document.querySelector('#qr-code-canvas') as HTMLCanvasElement;
-
-        const getQrDataUrl = (): Promise<string> => {
-            return new Promise((resolve) => {
-                if (!canvas) {
-                    resolve('');
-                    return;
-                }
-                resolve(canvas.toDataURL('image/png'));
-            });
-        };
-
-        const qrDataUrl = await getQrDataUrl();
-        const fixedSessionId = process.env.NEXT_PUBLIC_QR_SESSION_ID || 'qr_entrance_fixed_2024';
-        const printContent = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset="utf-8">
-                <title>QR 코드 - ${settings.venueName}</title>
-                <style>
-                @media print {
-                    @page { size: A4; margin: 0; }
-                    body { margin: 1cm; }
-                }
-                body {
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                    text-align: center;
-                    color: #0f172a;
-                    padding: 40px;
-                }
-                .container { max-width: 800px; margin: 0 auto; }
-                .card { 
-                    border: 1px solid #e2e8f0; 
-                    border-radius: 32px; 
-                    padding: 60px 40px; 
-                    background: white;
-                }
-                h1 { font-size: 42px; font-weight: 800; margin-bottom: 8px; color: #1e293b; }
-                .subtitle { font-size: 20px; color: #64748b; margin-bottom: 40px; }
-                .qr-frame {
-                    display: inline-block;
-                    padding: 30px;
-                    background: white;
-                    border: 8px solid #f1f5f9;
-                    border-radius: 40px;
-                    margin-bottom: 40px;
-                }
-                .qr-image { width: 400px; height: 400px; display: block; }
-                .instructions {
-                    text-align: left;
-                    background: #f8fafc;
-                    padding: 40px;
-                    border-radius: 24px;
-                    margin: 40px 0;
-                }
-                .instructions h2 { font-size: 24px; font-weight: 700; margin-bottom: 24px; text-align: center; }
-                .instructions ol { font-size: 18px; line-height: 2; color: #334155; }
-                .footer { color: #94a3b8; font-size: 12px; margin-top: 40px; border-top: 1px solid #f1f5f9; padding-top: 20px; }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                <div class="card">
-                    <h1>${settings.venueName}</h1>
-                    <p class="subtitle">배드민턴 코트 스마트 입장 가이드</p>
-                    
-                    <div class="qr-frame">
-                    <img src="${qrDataUrl}" class="qr-image" alt="QR Code" />
-                    </div>
-
-                    <div class="instructions">
-                    <h2>📱 입장 방법 (60초 완료)</h2>
-                    <ol>
-                        <li>휴대폰 <strong>기본 카메라</strong>를 실행합니다.</li>
-                        <li>위 <strong>QR 코드를 스캔</strong>하여 링크로 접속합니다.</li>
-                        <li><strong>닉네임을 등록</strong>합니다 (최초 1회).</li>
-                        <li>화면 중앙의 <strong>'QR 입장하기'</strong> 버튼을 클릭합니다.</li>
-                        <li>원하는 <strong>코트에 신청</strong>을 완료합니다.</li>
-                    </ol>
-                    </div>
-
-                    <div class="footer">
-                    고정 세션 ID: ${fixedSessionId} | 자동 매칭 시스템 활성화 중
-                    </div>
-                </div>
-                </div>
-            </body>
-            </html>
-        `;
-
-        printWindow.document.write(printContent);
-        printWindow.document.close();
-
-        // Wait for image to render in the new window
-        setTimeout(() => {
-            printWindow.print();
-            printWindow.close();
-        }, 1000);
-    };
-
     const menuItems = [
+        { id: 'qr' as MenuType, icon: Printer, label: '접속 QR 안내', color: 'slate' },
         { id: 'qr' as MenuType, icon: BadmintonIcon, label: 'QR 생성', color: 'slate' },
         { id: 'courts' as MenuType, icon: LayoutDashboard, label: '코트 현황', color: 'slate' },
         { id: 'usage' as MenuType, icon: Activity, label: '사용 현황', color: 'slate' },
@@ -1154,9 +1051,9 @@ export default function AdminPage() {
                         <div className="mb-8">
                             <h2 className="text-4xl font-black text-slate-900 mb-2 flex items-center gap-3">
                                 <Printer className="w-10 h-10 text-indigo-600" />
-                                QR 코드 생성
+                                최초 접속 QR 안내
                             </h2>
-                            <p className="text-slate-600 font-medium">사용자가 스캔할 QR 코드를 생성하고 인쇄하세요</p>
+                            <p className="text-slate-600 font-medium">QR은 처음 사이트에 접속하거나 앱을 설치할 때만 사용합니다.</p>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-5 gap-8">
@@ -1190,10 +1087,10 @@ export default function AdminPage() {
                                             인쇄하기
                                         </button>
                                         <button
-                                            onClick={() => generateQRWithFixedSession()}
+                                            onClick={() => generateSiteQRCode()}
                                             disabled={true}
                                             className="bg-slate-400 text-white py-4 rounded-xl font-bold cursor-not-allowed flex items-center justify-center gap-2 opacity-50"
-                                            title="고정 QR 코드는 변경되지 않습니다"
+                                            title="사이트 접속 주소를 다시 생성합니다"
                                         >
                                             <RefreshCw className="w-5 h-5" />
                                             새로고침
@@ -1212,9 +1109,7 @@ export default function AdminPage() {
                                             value={baseUrl}
                                             onChange={(e) => {
                                                 setBaseUrl(e.target.value);
-                                                const fixedSessionId = process.env.NEXT_PUBLIC_QR_SESSION_ID || 'qr_entrance_fixed_2024';
-                                                const url = `${e.target.value}/scan?session=${fixedSessionId}`;
-                                                setQrUrl(url);
+                                                generateSiteQRCode(e.target.value);
                                             }}
                                             className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-semibold outline-none focus:ring-2 focus:ring-indigo-500"
                                             placeholder="http://192.168.0.x:3000"
@@ -1225,7 +1120,7 @@ export default function AdminPage() {
 
                                 <div className="bg-white rounded-2xl p-6 shadow-md border border-slate-100">
                                     <div className="flex items-center justify-between mb-2">
-                                        <p className="text-xs font-bold text-slate-400 uppercase">QR 연결 URL</p>
+                                    <p className="text-xs font-bold text-slate-400 uppercase">사이트 접속 URL</p>
                                         <button
                                             onClick={copyToClipboard}
                                             className="text-indigo-600 hover:text-indigo-700 font-bold text-xs flex items-center gap-1"
@@ -1238,11 +1133,8 @@ export default function AdminPage() {
                                 </div>
 
                                 <div className="bg-white rounded-2xl p-6 shadow-md border border-slate-100">
-                                    <p className="text-xs font-bold text-slate-400 uppercase mb-2">세션 ID (고정)</p>
-                                    <p className="text-xs font-mono text-slate-500 break-all bg-slate-50 p-3 rounded-lg border border-slate-200">
-                                        {process.env.NEXT_PUBLIC_QR_SESSION_ID || 'qr_entrance_fixed_2024'}
-                                    </p>
-                                    <p className="text-[11px] text-slate-400 mt-2 font-medium">※ 모든 사용자가 동일한 고정 QR 코드를 사용합니다.</p>
+                                    <p className="text-xs font-bold text-slate-400 uppercase mb-2">사용 방법</p>
+                                    <p className="text-[11px] text-slate-500 leading-relaxed">QR로 사이트에 접속한 뒤 위치 권한을 허용하세요. 입장과 구장 선택은 현재 위치로만 처리됩니다.</p>
                                 </div>
                             </div>
                         </div>
@@ -1486,9 +1378,9 @@ export default function AdminPage() {
                                             </div>
                                             <input
                                                 type="checkbox"
-                                                checked={settings.useGeofence}
-                                                onChange={(e) => setSettings({ ...settings, useGeofence: e.target.checked })}
-                                                className="w-5 h-5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer"
+                                                checked={true}
+                                                disabled
+                                                className="w-5 h-5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-not-allowed"
                                             />
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-50/50 border border-slate-200/60 rounded-xl">

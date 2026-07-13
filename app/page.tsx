@@ -97,7 +97,6 @@ export default function Home() {
   const [clubs, setClubs] = useState<string[]>([]);
   const [selectedClub, setSelectedClub] = useState<string>('');
   const [durationMinutes, setDurationMinutes] = useState<number>(120);
-  const [useGeofence, setUseGeofence] = useState<boolean>(true);
   const [stadiums, setStadiums] = useState<Stadium[]>([]);
   const [currentStadium, setCurrentStadium] = useState<Stadium | null>(null);
   const [findingStadium, setFindingStadium] = useState<boolean>(true);
@@ -323,6 +322,12 @@ export default function Home() {
         setFindingStadium(false);
       };
 
+      const locationOptions: PositionOptions = {
+        enableHighAccuracy: false,
+        timeout: 20000,
+        maximumAge: 60000
+      };
+
       navigator.geolocation.getCurrentPosition(
         checkPosition,
         (err) => {
@@ -336,12 +341,10 @@ export default function Home() {
         checkPosition,
         (err) => {
           console.error('Geolocation watch error:', err);
-          setIsInsideGeofence(false);
-          if (session) {
-            handleLogoutWithReason('위치 서비스 이용이 불가능해져 로그아웃되었습니다.');
-          }
+          // 모바일 브라우저의 일시적인 GPS/네트워크 오류만으로 세션을 종료하지 않습니다.
+          // 다음 위치 업데이트에서 정상 판정될 수 있습니다.
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        locationOptions
       );
     } else {
       setIsInsideGeofence(false);
@@ -349,7 +352,7 @@ export default function Home() {
     }
 
     return () => {
-      if (watchId) navigator.geolocation.clearWatch(watchId);
+      if (watchId !== undefined) navigator.geolocation.clearWatch(watchId);
     };
   }, [stadiums, session]);
 
@@ -560,18 +563,6 @@ export default function Home() {
         }
         setDurationMinutes(loadedDuration);
 
-        let loadedUseGeofence = false;
-        if (data.use_geofence !== null && data.use_geofence !== undefined) {
-          loadedUseGeofence = Boolean(data.use_geofence);
-        } else {
-          const matchGeofence = rulesText.match(/\[use_geofence:(\w+)\]/);
-          if (matchGeofence) {
-            loadedUseGeofence = matchGeofence[1] === 'true';
-          }
-        }
-        setUseGeofence(loadedUseGeofence);
-
-        
       }
     } catch (e) {
       // Ignore settings fetch error
@@ -596,7 +587,7 @@ export default function Home() {
     if (!nickname.trim()) return;
 
     // 위치 기반 체크
-    if (useGeofence && (isInsideGeofence === false || isInsideGeofence === null)) {
+    if (isInsideGeofence !== true) {
       alert('구장 내에서만 입장(닉네임 등록)이 가능합니다. 위치 서비스를 승인하고 구장에 접근해 주세요.');
       return;
     }
@@ -763,7 +754,7 @@ export default function Home() {
             <img src="/logo.png" alt="BadmintonCot Logo" className="w-full h-full object-cover" />
           </div>
           <p className="text-2xl font-black text-indigo-600 tracking-tight mb-1">{venueName}</p>
-          {useGeofence && (
+          <>
             <div className="mb-3">
               {isInsideGeofence === null ? (
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
@@ -782,10 +773,10 @@ export default function Home() {
                 </span>
               )}
             </div>
-          )}
+          </>
           
           {/* 위치 및 알림 경고 안내문구 */}
-          {useGeofence && (isInsideGeofence === false || isInsideGeofence === null) && (
+          {(isInsideGeofence === false || isInsideGeofence === null) && (
             <div className="bg-rose-50 border border-rose-100 text-rose-700 px-3.5 py-3 rounded-2xl mb-3 text-[10px] font-bold text-left leading-normal flex items-start gap-1.5 shadow-sm">
               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-rose-500" />
               <span>위치 기반 서비스 권한이 허용되지 않았거나 구장 밖입니다. 위치 권한을 허용하고 구장 내에 계셔야 앱을 사용하실 수 있습니다.</span>
@@ -840,9 +831,9 @@ export default function Home() {
             </div>
             <button
               type="submit"
-              disabled={useGeofence && (isInsideGeofence === false || isInsideGeofence === null)}
+      disabled={isInsideGeofence !== true}
               className={`w-full py-3 rounded-xl text-sm font-bold transition-all shadow-lg active:scale-[0.98] ${
-                useGeofence && (isInsideGeofence === false || isInsideGeofence === null)
+                isInsideGeofence !== true
                   ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
                   : 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white hover:from-indigo-700 hover:to-indigo-800'
               }`}
@@ -911,7 +902,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/20 pb-6">
       {/* 위치 및 알림 제한 안내 경고 */}
-      {useGeofence && (isInsideGeofence === false || isInsideGeofence === null) && (
+      {(isInsideGeofence === false || isInsideGeofence === null) && (
         <div className="max-w-7xl mx-auto px-4 mt-3">
           <div className="bg-rose-50 border border-rose-100 text-rose-700 px-4 py-3 rounded-2xl text-xs font-semibold text-left leading-normal flex items-start gap-2 shadow-sm">
             <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />

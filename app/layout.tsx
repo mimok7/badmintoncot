@@ -3,7 +3,7 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: '민턴 코트',
-  description: 'QR 입장 및 실시간 코트 배정',
+  description: '위치 기반 구장 입장 및 실시간 코트 배정',
   manifest: '/manifest.json',
 }
 
