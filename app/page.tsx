@@ -301,7 +301,11 @@ export default function Home() {
 
         for (const stadium of stadiums) {
           const dist = getDistanceInMeters(pos.coords.latitude, pos.coords.longitude, stadium.latitude, stadium.longitude);
-          if (dist <= stadium.radius_meter && dist < minDistance) {
+          // 모바일 GPS는 같은 장소에서도 수십~수백 m의 오차가 발생할 수 있습니다.
+          // 위치의 정확도 원을 고려해 구장 반경과 오차 원이 겹치면 구장 내로 판정합니다.
+          const accuracyAllowance = Math.min(Math.max(pos.coords.accuracy || 0, 0), 150);
+          const effectiveRadius = Math.max(Number(stadium.radius_meter) || 100, 50) + accuracyAllowance;
+          if (dist <= effectiveRadius && dist < minDistance) {
             minDistance = dist;
             foundStadium = stadium;
           }
@@ -323,9 +327,9 @@ export default function Home() {
       };
 
       const locationOptions: PositionOptions = {
-        enableHighAccuracy: false,
-        timeout: 20000,
-        maximumAge: 60000
+        enableHighAccuracy: true,
+        timeout: 30000,
+        maximumAge: 10000
       };
 
       navigator.geolocation.getCurrentPosition(
@@ -334,7 +338,8 @@ export default function Home() {
           console.error('Geolocation initial check error:', err);
           setIsInsideGeofence(false);
           setFindingStadium(false);
-        }
+        },
+        locationOptions
       );
 
       watchId = navigator.geolocation.watchPosition(
