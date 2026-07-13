@@ -97,6 +97,8 @@ export default function AdminPage() {
     const [newPassword, setNewPassword] = useState('');
     const [confirmNewPassword, setConfirmNewPassword] = useState('');
     const [isChangingPassword, setIsChangingPassword] = useState(false);
+    const [locationCheckEnabled, setLocationCheckEnabled] = useState(true);
+    const [isSavingLocationCheck, setIsSavingLocationCheck] = useState(false);
 
     // States for adding new stadiums
     const [isAddStadiumOpen, setIsAddStadiumOpen] = useState(false);
@@ -237,6 +239,11 @@ export default function AdminPage() {
                 currentRole = adminUser.role;
                 currentAdminStadiumId = adminUser.stadium_id;
                 setAdminRole(currentRole);
+            }
+
+            const locationCheckResult = await supabase.rpc('get_location_check_enabled');
+            if (!locationCheckResult.error && typeof locationCheckResult.data === 'boolean') {
+                setLocationCheckEnabled(locationCheckResult.data);
             }
 
             // Fetch Stadiums based on role
@@ -507,6 +514,26 @@ export default function AdminPage() {
     const generateSiteQRCode = (currentBaseUrl?: string) => {
         const host = currentBaseUrl || baseUrl;
         setQrUrl(host ? `${host}/` : '');
+    };
+
+    const handleLocationCheckChange = async (enabled: boolean) => {
+        if (adminRole !== 'superadmin') return;
+        setIsSavingLocationCheck(true);
+        try {
+            const { error } = await supabase.rpc('set_location_check_enabled', {
+                p_enabled: enabled,
+            });
+            if (error) throw error;
+            setLocationCheckEnabled(enabled);
+            alert(enabled
+                ? '위치기반 제한이 활성화되었습니다. 구장 반경 내에서만 입장과 신청이 가능합니다.'
+                : '위치기반 제한이 해제되었습니다. 사용자는 선택한 구장에서 작업할 수 있습니다.');
+        } catch (error) {
+            console.error('위치기반 제한 변경 실패:', error);
+            alert('위치기반 제한 변경에 실패했습니다. Supabase 복구 SQL을 먼저 실행해 주세요.');
+        } finally {
+            setIsSavingLocationCheck(false);
+        }
     };
 
     const handleLocationSearch = async (event?: React.FormEvent) => {
@@ -1304,9 +1331,10 @@ export default function AdminPage() {
                                             </div>
                                             <input
                                                 type="checkbox"
-                                                checked={true}
-                                                disabled
-                                                className="w-5 h-5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-not-allowed"
+                                                checked={locationCheckEnabled}
+                                                disabled={isSavingLocationCheck}
+                                                onChange={(event) => handleLocationCheckChange(event.target.checked)}
+                                                className="w-5 h-5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 disabled:cursor-wait"
                                             />
                                         </div>
                                         <div className="p-4 bg-indigo-50/60 border border-indigo-100 rounded-xl">

@@ -200,6 +200,7 @@ export default function Home() {
   const [locationError, setLocationError] = useState<string | null>(null);
   const [locationDiagnostic, setLocationDiagnostic] = useState<LocationDiagnostic | null>(null);
   const [locationChecking, setLocationChecking] = useState(false);
+  const [locationCheckEnabled, setLocationCheckEnabled] = useState(true);
   const currentStadiumIdRef = useRef<number | null>(null);
   const creatingSessionRef = useRef(false);
   const memberAccessTokenRef = useRef<string | null>(null);
@@ -207,6 +208,16 @@ export default function Home() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
+  const locationCheckPaused = !locationCheckEnabled;
+
+  useEffect(() => {
+    const fetchLocationCheckSetting = async () => {
+      const { data, error } = await supabase.rpc('get_location_check_enabled');
+      // 설정을 읽을 수 없을 때는 기존 위치 인증을 유지한다.
+      if (!error && typeof data === 'boolean') setLocationCheckEnabled(data);
+    };
+    fetchLocationCheckSetting();
+  }, []);
 
   // 브라우저 알림 권한 요청 (최초 1회만 팝업)
   useEffect(() => {
@@ -441,6 +452,18 @@ export default function Home() {
   // DB의 구장 좌표를 기준으로 접속 중 위치를 계속 판정합니다.
   useEffect(() => {
     if (stadiums.length === 0) return;
+    if (locationCheckPaused) {
+      const selected = stadiums.find((stadium) => stadium.id === selectedStadiumId) ?? stadiums[0];
+      currentStadiumIdRef.current = selected.id;
+      setSelectedStadiumId(selected.id);
+      setCurrentStadium(selected);
+      setVenueName(selected.name);
+      setIsInsideGeofence(true);
+      setLocationError(null);
+      setLocationDiagnostic(null);
+      setFindingStadium(false);
+      return;
+    }
     if (!('geolocation' in navigator)) {
       setLocationError('이 브라우저는 위치 정보를 지원하지 않습니다.');
       setIsInsideGeofence(false);
@@ -491,9 +514,22 @@ export default function Home() {
     return () => {
       if (watchId !== undefined) navigator.geolocation.clearWatch(watchId);
     };
-  }, [applyGeofenceResult, stadiums]);
+  }, [applyGeofenceResult, locationCheckPaused, selectedStadiumId, stadiums]);
 
   const verifyCurrentStadiumLocation = async (stadiumId: number): Promise<VerifiedLocation | null> => {
+    if (locationCheckPaused) {
+      const stadium = stadiums.find((item) => item.id === stadiumId);
+      if (!stadium) {
+        alert('선택한 구장 정보를 찾을 수 없습니다.');
+        return null;
+      }
+      return {
+        stadium,
+        latitude: stadium.latitude,
+        longitude: stadium.longitude,
+        accuracy: 0,
+      };
+    }
     if (!('geolocation' in navigator)) {
       alert('이 브라우저는 위치 정보를 지원하지 않습니다.');
       return null;
@@ -568,8 +604,8 @@ export default function Home() {
     setSelectedStadiumId(selected.id);
     setVenueName(selected.name);
 
-    // 드롭다운 선택만으로 위치 인증을 우회하지 않는다. 이미 위치 인증된 경우에만 대상 구장을 변경한다.
-    if (isInsideGeofence === true) {
+    // 위치 인증 중지 기간에는 선택한 구장에서 바로 작업한다.
+    if (locationCheckPaused || isInsideGeofence === true) {
       currentStadiumIdRef.current = selected.id;
       setCurrentStadium(selected);
     }
@@ -657,7 +693,7 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (!member || !currentStadium || isInsideGeofence !== true) {
+    if (!member || !currentStadium || (!locationCheckPaused && isInsideGeofence !== true)) {
       setSession(null);
       return;
     }
@@ -697,7 +733,7 @@ export default function Home() {
 
     loadStadiumSession();
     checkMyReservation();
-  }, [member, currentStadium, isInsideGeofence]);
+  }, [member, currentStadium, isInsideGeofence, locationCheckPaused]);
 
   const fetchCourts = async () => {
     if (!currentStadium) return;
@@ -814,7 +850,7 @@ export default function Home() {
     if (!nickname.trim() || locationChecking) return;
 
     // 위치 기반 체크
-    if (isInsideGeofence !== true || !currentStadium) {
+    if (!currentStadium || (!locationCheckPaused && isInsideGeofence !== true)) {
       alert('구장 내에서만 입장(닉네임 등록)이 가능합니다. 위치 서비스를 승인하고 구장에 접근해 주세요.');
       return;
     }
@@ -854,7 +890,7 @@ export default function Home() {
       return;
     }
     if (locationChecking) return;
-    if (isInsideGeofence !== true || !currentStadium) {
+    if (!currentStadium || (!locationCheckPaused && isInsideGeofence !== true)) {
       alert('현재 구장 안에서만 코트 신청이 가능합니다.');
       return;
     }
@@ -883,20 +919,41 @@ export default function Home() {
       }
     }
 
-    const { error } = await supabase.rpc('reserve_court_at_stadium', {
-      p_member_id: member.id,
-      p_access_token: accessToken,
-      p_court_id: courtId,
-      p_team_number: teamNumber,
-      p_stadium_id: verifiedLocation.stadium.id,
-      p_latitude: verifiedLocation.latitude,
-      p_longitude: verifiedLocation.longitude,
-      p_accuracy: verifiedLocation.accuracy,
+    const reserveRequest = {
+      member_id: member.id,
+      access_token: accessToken,
+      court_id: courtId,
+      team_number: teamNumber,
+      stadium_id: verifiedLocation.stadium.id,
+      latitude: verifiedLocation.latitude,
+      longitude: verifiedLocation.longitude,
+      accuracy: verifiedLocation.accuracy,
+    };
+    if (
+      !Number.isInteger(reserveRequest.court_id) ||
+      !Number.isInteger(reserveRequest.team_number) ||
+      !Number.isInteger(reserveRequest.stadium_id) ||
+      !Number.isFinite(reserveRequest.latitude) ||
+      !Number.isFinite(reserveRequest.longitude) ||
+      !Number.isFinite(reserveRequest.accuracy)
+    ) {
+      alert('신청 요청 정보가 올바르지 않습니다. 구장을 다시 선택해 주세요.');
+      return;
+    }
+
+    const { error } = await supabase.rpc('reserve_court_request', {
+      p_request: reserveRequest,
     });
 
     if (error) {
+      console.error('예약 RPC 오류:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      });
       if (error.code === 'PGRST202' || /could not find the function|function .* does not exist/i.test(error.message)) {
-        alert('신청 기능이 현재 연결되지 않았습니다. 관리자에게 reserve_court_at_stadium RPC 복구 SQL 실행을 요청해 주세요.');
+        alert('신청 기능이 현재 연결되지 않았습니다. 관리자에게 최신 RPC 복구 SQL 실행을 요청해 주세요.');
       } else if (error.code === '23505') {
         alert('이미 이 코트에 신청 중입니다.');
         // 예약 상태 다시 확인
@@ -1010,7 +1067,12 @@ export default function Home() {
           <p className="text-2xl font-black text-indigo-600 tracking-tight mb-1">{venueName}</p>
           <>
             <div className="mb-3">
-              {isInsideGeofence === null ? (
+              {locationCheckPaused ? (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
+                  위치 인증 임시 중지
+                </span>
+              ) : isInsideGeofence === null ? (
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
                   <span className="h-1.5 w-1.5 rounded-full bg-slate-400 animate-ping"></span>
                   위치 확인 중...
@@ -1046,14 +1108,14 @@ export default function Home() {
                   <option key={stadium.id} value={stadium.id}>{stadium.name}</option>
                 ))}
               </select>
-              {isInsideGeofence !== true && (
+              {!locationCheckPaused && isInsideGeofence !== true && (
                 <p className="mt-1.5 text-[10px] font-semibold text-slate-500">
                   구장 선택은 표시용이며, 입장과 신청은 선택한 구장 위치 안에서만 가능합니다.
                 </p>
               )}
             </div>
           )}
-          {(isInsideGeofence === false || isInsideGeofence === null) && (
+          {!locationCheckPaused && (isInsideGeofence === false || isInsideGeofence === null) && (
             <div className="bg-rose-50 border border-rose-100 text-rose-700 px-3.5 py-3 rounded-2xl mb-3 text-[10px] font-bold text-left leading-normal flex items-start gap-1.5 shadow-sm">
               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-rose-500" />
               <span>
@@ -1122,9 +1184,9 @@ export default function Home() {
             </div>
             <button
               type="submit"
-              disabled={isInsideGeofence !== true || locationChecking}
+              disabled={(!locationCheckPaused && isInsideGeofence !== true) || locationChecking}
               className={`w-full py-3 rounded-xl text-sm font-bold transition-all shadow-lg active:scale-[0.98] ${
-                isInsideGeofence !== true || locationChecking
+                (!locationCheckPaused && isInsideGeofence !== true) || locationChecking
                   ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
                   : 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white hover:from-indigo-700 hover:to-indigo-800'
               }`}
@@ -1193,7 +1255,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/20 pb-6">
       {/* 위치 및 알림 제한 안내 경고 */}
-      {(isInsideGeofence === false || isInsideGeofence === null) && (
+      {!locationCheckPaused && (isInsideGeofence === false || isInsideGeofence === null) && (
         <div className="max-w-7xl mx-auto px-4 mt-3">
           <div className="bg-rose-50 border border-rose-100 text-rose-700 px-4 py-3 rounded-2xl text-xs font-semibold text-left leading-normal flex items-start gap-2 shadow-sm">
             <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -1529,7 +1591,7 @@ export default function Home() {
                                     ? 'bg-slate-300 text-slate-600'
                                     : 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white hover:from-indigo-700 hover:to-indigo-800'
                                 }`}
-                                disabled={isInsideGeofence !== true || locationChecking || !session || myReservedCourtId !== null || isFull || court.is_active === false || ['occupied', 'lesson', 'beginner', 'reservation_only', 'maintenance'].includes(court.status) || isDifferentClub}
+                                disabled={(!locationCheckPaused && isInsideGeofence !== true) || locationChecking || !session || myReservedCourtId !== null || isFull || court.is_active === false || ['occupied', 'lesson', 'beginner', 'reservation_only', 'maintenance'].includes(court.status) || isDifferentClub}
                               >
                                 {locationChecking ? '위치 확인' : isDifferentClub ? '클럽다름' : `신청 ${teamNum}`}
                                 {team && <span className="text-[10px]">({team.members.length}/4)</span>}

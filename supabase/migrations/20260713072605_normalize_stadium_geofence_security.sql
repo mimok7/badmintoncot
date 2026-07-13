@@ -196,6 +196,57 @@ alter table public.entry_sessions alter column id set default pg_catalog.gen_ran
 -- 단일 구장 시절의 4인 즉시 삭제 트리거와 공개 관리자 헬퍼를 제거한다.
 drop trigger if exists trigger_check_reservation_count on public.reservations;
 drop function if exists public.check_reservation_count();
+drop trigger if exists check_team_count_trigger on public.reservations;
+drop function if exists public.check_team_count();
+drop trigger if exists auto_confirm_team_trigger on public.reservations;
+drop function if exists public.auto_confirm_team();
+
+create or replace function public.auto_confirm_team()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_team_count integer;
+  v_court_has_playing boolean;
+begin
+  select count(*) into v_team_count
+  from public.reservations r
+  where r.court_id = new.court_id
+    and r.team_number = new.team_number
+    and r.status in ('waiting', 'confirmed', 'playing');
+
+  if v_team_count = 4 then
+    select exists (
+      select 1 from public.reservations r
+      where r.court_id = new.court_id and r.status = 'playing'
+    ) into v_court_has_playing;
+
+    if not v_court_has_playing then
+      update public.reservations
+      set status = 'playing', confirmed_at = now()
+      where court_id = new.court_id
+        and team_number = new.team_number
+        and status = 'waiting';
+      update public.courts
+      set current_playing_team = new.team_number
+      where id = new.court_id;
+    else
+      update public.reservations
+      set status = 'confirmed', confirmed_at = now()
+      where court_id = new.court_id
+        and team_number = new.team_number
+        and status = 'waiting';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+create trigger auto_confirm_team_trigger
+after insert on public.reservations
+for each row execute function public.auto_confirm_team();
 
 -- 통계도 반드시 구장별로 집계한다.
 create or replace function public.update_daily_statistics()
