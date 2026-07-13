@@ -301,7 +301,7 @@ export default function AdminPage() {
 
             if (error) throw error;
 
-            alert('설정이 저장되었습니다!');
+            alert('설정이 저장되었습니다.');
             fetchCourts();
             fetchSettings();
         } catch (error) {

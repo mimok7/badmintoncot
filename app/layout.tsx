@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import AppMessageProvider from '@/components/app-message-provider'
 
 export const metadata: Metadata = {
   title: '민턴 코트',
@@ -19,7 +20,7 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/badcotlogo.png" />
       </head>
       <body>
-        {children}
+        <AppMessageProvider>{children}</AppMessageProvider>
         <script dangerouslySetInnerHTML={{ __html: `
           if ('serviceWorker' in navigator) {
             window.addEventListener('load', function() {
