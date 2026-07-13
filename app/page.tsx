@@ -52,6 +52,12 @@ interface EntrySession {
   is_active: boolean;
 }
 
+interface LocationDiagnostic {
+  distanceMeters: number;
+  accuracyMeters: number;
+  allowedMeters: number;
+}
+
 const getClubColorClass = (clubName: string | undefined): string => {
   if (!clubName || clubName === '무소속') {
     return 'bg-slate-100 text-slate-700 border-slate-200/50';
@@ -101,6 +107,8 @@ export default function Home() {
   const [currentStadium, setCurrentStadium] = useState<Stadium | null>(null);
   const [findingStadium, setFindingStadium] = useState<boolean>(true);
   const [isInsideGeofence, setIsInsideGeofence] = useState<boolean | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [locationDiagnostic, setLocationDiagnostic] = useState<LocationDiagnostic | null>(null);
 
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
@@ -287,9 +295,13 @@ export default function Home() {
     if (stadiums.length === 0) return;
 
     let watchId: number;
+    let fallbackRequested = false;
+    let hasLocation = false;
 
     if ('geolocation' in navigator) {
       const checkPosition = (pos: GeolocationPosition) => {
+        hasLocation = true;
+        setLocationError(null);
         let foundStadium: Stadium | null = null;
         let nearestStadium: Stadium | null = null;
         let nearestDistance = Infinity;
@@ -305,7 +317,7 @@ export default function Home() {
           // 모바일 GPS는 같은 장소에서도 큰 오차가 발생할 수 있습니다.
           // 기기가 제공한 정확도 원과 구장 반경이 겹치면 구장 내로 판정합니다.
           const accuracyAllowance = Math.max(Number(pos.coords.accuracy) || 0, 0);
-          const effectiveRadius = Math.max(Number(stadium.radius_meter) || 100, 50) + accuracyAllowance;
+          const effectiveRadius = Math.max(Number(stadium.radius_meter) || 100, 300) + accuracyAllowance;
           if (dist <= effectiveRadius && dist < insideDistance) {
             insideDistance = dist;
             foundStadium = stadium;
@@ -318,6 +330,11 @@ export default function Home() {
             setCurrentStadium(nearestStadium);
           }
           setVenueName(nearestStadium.name);
+          setLocationDiagnostic({
+            distanceMeters: Math.round(nearestDistance),
+            accuracyMeters: Math.round(Math.max(Number(pos.coords.accuracy) || 0, 0)),
+            allowedMeters: Math.round(Math.max(Number(nearestStadium.radius_meter) || 100, 300) + Math.max(Number(pos.coords.accuracy) || 0, 0))
+          });
         }
 
         if (foundStadium) {
@@ -328,30 +345,55 @@ export default function Home() {
         setFindingStadium(false);
       };
 
-      const locationOptions: PositionOptions = {
+      const highAccuracyOptions: PositionOptions = {
         enableHighAccuracy: true,
         timeout: 30000,
         maximumAge: 0
       };
 
-      navigator.geolocation.getCurrentPosition(
-        checkPosition,
-        (err) => {
-          console.error('Geolocation initial check error:', err);
+      const fallbackOptions: PositionOptions = {
+        enableHighAccuracy: false,
+        timeout: 15000,
+        maximumAge: 60000
+      };
+
+      const handleLocationError = (err: GeolocationPositionError, isFallback = false) => {
+        console.error('Geolocation error:', err);
+
+        // 실내·저전력 모드에서는 고정밀 GPS가 시간 초과될 수 있으므로,
+        // 네트워크 기반 위치로 한 번 더 확인합니다.
+        if (!hasLocation && !isFallback && err.code !== err.PERMISSION_DENIED && !fallbackRequested) {
+          fallbackRequested = true;
+          navigator.geolocation.getCurrentPosition(
+            checkPosition,
+            (fallbackError) => handleLocationError(fallbackError, true),
+            fallbackOptions
+          );
+          return;
+        }
+
+        if (!hasLocation) {
+          const message = err.code === err.PERMISSION_DENIED
+            ? '위치 권한이 차단되어 있습니다. 브라우저 또는 홈 화면 앱의 설정에서 이 사이트의 위치 권한을 허용한 뒤 앱을 완전히 종료하고 다시 열어 주세요.'
+            : err.code === err.TIMEOUT
+              ? '위치 확인 시간이 초과되었습니다. GPS 또는 Wi‑Fi를 켠 뒤 다시 시도해 주세요.'
+              : '현재 위치를 가져올 수 없습니다. GPS 또는 Wi‑Fi 연결을 확인해 주세요.';
+          setLocationError(message);
           setIsInsideGeofence(false);
           setFindingStadium(false);
-        },
-        locationOptions
+        }
+      };
+
+      navigator.geolocation.getCurrentPosition(
+        checkPosition,
+        handleLocationError,
+        highAccuracyOptions
       );
 
       watchId = navigator.geolocation.watchPosition(
         checkPosition,
-        (err) => {
-          console.error('Geolocation watch error:', err);
-          // 모바일 브라우저의 일시적인 GPS/네트워크 오류만으로 세션을 종료하지 않습니다.
-          // 다음 위치 업데이트에서 정상 판정될 수 있습니다.
-        },
-        locationOptions
+        handleLocationError,
+        fallbackOptions
       );
     } else {
       setIsInsideGeofence(false);
@@ -776,7 +818,7 @@ export default function Home() {
               ) : (
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
                   <span className="h-1.5 w-1.5 rounded-full bg-rose-500 animate-pulse"></span>
-                  구장 외 접근 불가
+                  {locationError ? '위치 확인 실패' : '구장 외 접근 불가'}
                 </span>
               )}
             </div>
@@ -786,7 +828,14 @@ export default function Home() {
           {(isInsideGeofence === false || isInsideGeofence === null) && (
             <div className="bg-rose-50 border border-rose-100 text-rose-700 px-3.5 py-3 rounded-2xl mb-3 text-[10px] font-bold text-left leading-normal flex items-start gap-1.5 shadow-sm">
               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-rose-500" />
-              <span>위치 기반 서비스 권한이 허용되지 않았거나 구장 밖입니다. 위치 권한을 허용하고 구장 내에 계셔야 앱을 사용하실 수 있습니다.</span>
+              <span>
+                {locationError || '구장 밖으로 확인되었습니다. 구장 내로 이동한 뒤 잠시 후 다시 확인해 주세요.'}
+                {locationDiagnostic && !locationError && (
+                  <span className="block mt-1 text-rose-500">
+                    현재 거리 {locationDiagnostic.distanceMeters}m · GPS 오차 ±{locationDiagnostic.accuracyMeters}m · 허용 거리 {locationDiagnostic.allowedMeters}m
+                  </span>
+                )}
+              </span>
             </div>
           )}
           {notificationPermission !== 'granted' && (
