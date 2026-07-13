@@ -354,7 +354,7 @@ export default function Home() {
       const fallbackOptions: PositionOptions = {
         enableHighAccuracy: false,
         timeout: 15000,
-        maximumAge: 60000
+        maximumAge: 0
       };
 
       const handleLocationError = (err: GeolocationPositionError, isFallback = false) => {
@@ -393,7 +393,7 @@ export default function Home() {
       watchId = navigator.geolocation.watchPosition(
         checkPosition,
         handleLocationError,
-        fallbackOptions
+        highAccuracyOptions
       );
     } else {
       setIsInsideGeofence(false);
