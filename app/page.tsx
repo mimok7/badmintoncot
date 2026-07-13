@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import {
   User,
@@ -13,7 +13,12 @@ import {
   AlertTriangle,
   BellOff
 } from 'lucide-react';
-import { getDistanceInMeters } from '@/lib/geo';
+import {
+  evaluateGeofence,
+  GeofenceResult,
+  GeofenceStadium,
+  isValidStadiumLocation,
+} from '@/lib/geofence';
 
 interface Member {
   id: string;
@@ -37,17 +42,12 @@ interface Court {
   }[];
 }
 
-interface Stadium {
-  id: number;
-  name: string;
+interface Stadium extends GeofenceStadium {
   address: string;
-  latitude: number;
-  longitude: number;
-  radius_meter: number;
 }
 
 interface EntrySession {
-  id: number;
+  id: string;
   expires_at: string;
   is_active: boolean;
 }
@@ -56,6 +56,53 @@ interface LocationDiagnostic {
   distanceMeters: number;
   accuracyMeters: number;
   allowedMeters: number;
+}
+
+interface VerifiedLocation {
+  stadium: Stadium;
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+}
+
+const MEMBER_TOKEN_STORAGE_KEY = 'badminton_member_access_token';
+
+const HIGH_ACCURACY_OPTIONS: PositionOptions = {
+  enableHighAccuracy: true,
+  timeout: 20000,
+  maximumAge: 0,
+};
+
+const FALLBACK_LOCATION_OPTIONS: PositionOptions = {
+  enableHighAccuracy: false,
+  timeout: 10000,
+  maximumAge: 0,
+};
+
+function requestCurrentPosition(options: PositionOptions): Promise<GeolocationPosition> {
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(resolve, reject, options);
+  });
+}
+
+async function requestFreshPosition(): Promise<GeolocationPosition> {
+  try {
+    return await requestCurrentPosition(HIGH_ACCURACY_OPTIONS);
+  } catch (error) {
+    const locationError = error as GeolocationPositionError;
+    if (locationError.code === locationError.PERMISSION_DENIED) throw locationError;
+    return requestCurrentPosition(FALLBACK_LOCATION_OPTIONS);
+  }
+}
+
+function getLocationErrorMessage(error: GeolocationPositionError): string {
+  if (error.code === error.PERMISSION_DENIED) {
+    return '위치 권한이 차단되어 있습니다. 브라우저 또는 홈 화면 앱 설정에서 위치 권한을 허용해 주세요.';
+  }
+  if (error.code === error.TIMEOUT) {
+    return '위치 확인 시간이 초과되었습니다. GPS와 Wi‑Fi를 켠 뒤 다시 시도해 주세요.';
+  }
+  return '현재 위치를 가져올 수 없습니다. GPS 또는 Wi‑Fi 연결을 확인해 주세요.';
 }
 
 const getClubColorClass = (clubName: string | undefined): string => {
@@ -102,13 +149,16 @@ export default function Home() {
   const [venueName, setVenueName] = useState<string>('배드민턴 코트');
   const [clubs, setClubs] = useState<string[]>([]);
   const [selectedClub, setSelectedClub] = useState<string>('');
-  const [durationMinutes, setDurationMinutes] = useState<number>(120);
   const [stadiums, setStadiums] = useState<Stadium[]>([]);
   const [currentStadium, setCurrentStadium] = useState<Stadium | null>(null);
   const [findingStadium, setFindingStadium] = useState<boolean>(true);
   const [isInsideGeofence, setIsInsideGeofence] = useState<boolean | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [locationDiagnostic, setLocationDiagnostic] = useState<LocationDiagnostic | null>(null);
+  const [locationChecking, setLocationChecking] = useState(false);
+  const currentStadiumIdRef = useRef<number | null>(null);
+  const creatingSessionRef = useRef(false);
+  const memberAccessTokenRef = useRef<string | null>(null);
 
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
@@ -141,13 +191,14 @@ export default function Home() {
 
   const fetchClubs = async () => {
     if (!currentStadium) return;
+    const stadiumId = currentStadium.id;
     try {
       const { data } = await supabase
         .from('clubs')
         .select('name')
-        .eq('stadium_id', currentStadium.id)
+        .eq('stadium_id', stadiumId)
         .order('name', { ascending: true });
-      if (data) {
+      if (data && currentStadiumIdRef.current === stadiumId) {
         setClubs(data.map((c: any) => c.name));
       }
     } catch (error) {
@@ -159,16 +210,31 @@ export default function Home() {
   useEffect(() => {
     const fetchStadiums = async () => {
       try {
-        const { data } = await supabase.from('stadiums').select('*');
-        if (data) {
-          setStadiums(data);
-          if (data.length === 0) {
-            setFindingStadium(false);
-          }
-        } else {
+        const { data, error } = await supabase
+          .from('stadiums')
+          .select('id, name, address, latitude, longitude, radius_meter')
+          .order('id', { ascending: true });
+        if (error) throw error;
+
+        const validStadiums = (data ?? [])
+          .map((stadium) => ({
+            id: Number(stadium.id),
+            name: String(stadium.name ?? ''),
+            address: String(stadium.address ?? ''),
+            latitude: Number(stadium.latitude),
+            longitude: Number(stadium.longitude),
+            radius_meter: Number(stadium.radius_meter),
+          }))
+          .filter(isValidStadiumLocation);
+
+        setStadiums(validStadiums);
+        if (validStadiums.length === 0) {
+          setLocationError('사용 가능한 구장 위치 정보가 없습니다. 관리자에게 문의해 주세요.');
           setFindingStadium(false);
         }
       } catch (err) {
+        console.error('구장 위치 조회 실패:', err);
+        setLocationError('구장 위치 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
         setFindingStadium(false);
       }
     };
@@ -225,7 +291,7 @@ export default function Home() {
         fetchCourts();
         checkMyReservation();
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings', filter: 'stadium_id=eq.' + currentStadium.id }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stadium_settings', filter: 'stadium_id=eq.' + currentStadium.id }, () => {
         fetchSettings();
       })
       .subscribe();
@@ -289,121 +355,167 @@ export default function Home() {
     };
   }, [member]);
 
-  // 실시간 지오펜싱 감지 (구장 이탈 시 자동 로그아웃)
-  
+  const applyGeofenceResult = useCallback((result: GeofenceResult) => {
+    setLocationDiagnostic(result.distanceMeters === null || result.allowedMeters === null ? null : {
+      distanceMeters: Math.round(result.distanceMeters),
+      accuracyMeters: Math.round(result.accuracyMeters),
+      allowedMeters: Math.round(result.allowedMeters),
+    });
+
+    if (result.status === 'inside' && result.stadium) {
+      const matchedStadium = stadiums.find((stadium) => stadium.id === result.stadium?.id)
+        ?? (result.stadium as Stadium);
+      if (matchedStadium) {
+        currentStadiumIdRef.current = matchedStadium.id;
+        setCurrentStadium((previous) => previous?.id === matchedStadium.id ? previous : matchedStadium);
+        setVenueName(matchedStadium.name);
+        setIsInsideGeofence(true);
+        setLocationError(null);
+      }
+    } else if (result.status === 'low-accuracy') {
+      // 부정확한 위치를 구장 밖으로 오판정하지 않되 신청은 막습니다.
+      setIsInsideGeofence(null);
+      setLocationError(null);
+    } else {
+      // 정확한 위치가 구장 밖이면 선택 구장과 신청 가능한 코트를 즉시 해제합니다.
+      currentStadiumIdRef.current = null;
+      setCurrentStadium(null);
+      setVenueName('배드민턴 코트');
+      setCourts([]);
+      setClubs([]);
+      setIsInsideGeofence(false);
+      if (result.status === 'unavailable') {
+        setLocationError('구장 위치 또는 현재 위치 정보가 올바르지 않습니다.');
+      } else {
+        setLocationError(null);
+      }
+    }
+    setFindingStadium(false);
+  }, [stadiums]);
+
+  // DB의 구장 좌표를 기준으로 접속 중 위치를 계속 판정합니다.
   useEffect(() => {
     if (stadiums.length === 0) return;
-
-    let watchId: number;
-    let fallbackRequested = false;
-    let hasLocation = false;
-
-    if ('geolocation' in navigator) {
-      const checkPosition = (pos: GeolocationPosition) => {
-        hasLocation = true;
-        setLocationError(null);
-        let foundStadium: Stadium | null = null;
-        let nearestStadium: Stadium | null = null;
-        let nearestDistance = Infinity;
-        let insideDistance = Infinity;
-
-        for (const stadium of stadiums) {
-          const dist = getDistanceInMeters(pos.coords.latitude, pos.coords.longitude, stadium.latitude, stadium.longitude);
-          if (dist < nearestDistance) {
-            nearestDistance = dist;
-            nearestStadium = stadium;
-          }
-
-          // 모바일 GPS는 같은 장소에서도 큰 오차가 발생할 수 있습니다.
-          // 기기가 제공한 정확도 원과 구장 반경이 겹치면 구장 내로 판정합니다.
-          const accuracyAllowance = Math.max(Number(pos.coords.accuracy) || 0, 0);
-          const effectiveRadius = Math.max(Number(stadium.radius_meter) || 100, 300) + accuracyAllowance;
-          if (dist <= effectiveRadius && dist < insideDistance) {
-            insideDistance = dist;
-            foundStadium = stadium;
-          }
-        }
-
-        // 구장 밖이어도 가장 가까운 구장 이름은 표시해 위치 결과를 명확히 합니다.
-        if (nearestStadium) {
-          if (!currentStadium || currentStadium.id !== nearestStadium.id) {
-            setCurrentStadium(nearestStadium);
-          }
-          setVenueName(nearestStadium.name);
-          setLocationDiagnostic({
-            distanceMeters: Math.round(nearestDistance),
-            accuracyMeters: Math.round(Math.max(Number(pos.coords.accuracy) || 0, 0)),
-            allowedMeters: Math.round(Math.max(Number(nearestStadium.radius_meter) || 100, 300) + Math.max(Number(pos.coords.accuracy) || 0, 0))
-          });
-        }
-
-        if (foundStadium) {
-          setIsInsideGeofence(true);
-        } else {
-          setIsInsideGeofence(false);
-        }
-        setFindingStadium(false);
-      };
-
-      const highAccuracyOptions: PositionOptions = {
-        enableHighAccuracy: true,
-        timeout: 30000,
-        maximumAge: 0
-      };
-
-      const fallbackOptions: PositionOptions = {
-        enableHighAccuracy: false,
-        timeout: 15000,
-        maximumAge: 0
-      };
-
-      const handleLocationError = (err: GeolocationPositionError, isFallback = false) => {
-        console.error('Geolocation error:', err);
-
-        // 실내·저전력 모드에서는 고정밀 GPS가 시간 초과될 수 있으므로,
-        // 네트워크 기반 위치로 한 번 더 확인합니다.
-        if (!hasLocation && !isFallback && err.code !== err.PERMISSION_DENIED && !fallbackRequested) {
-          fallbackRequested = true;
-          navigator.geolocation.getCurrentPosition(
-            checkPosition,
-            (fallbackError) => handleLocationError(fallbackError, true),
-            fallbackOptions
-          );
-          return;
-        }
-
-        if (!hasLocation) {
-          const message = err.code === err.PERMISSION_DENIED
-            ? '위치 권한이 차단되어 있습니다. 브라우저 또는 홈 화면 앱의 설정에서 이 사이트의 위치 권한을 허용한 뒤 앱을 완전히 종료하고 다시 열어 주세요.'
-            : err.code === err.TIMEOUT
-              ? '위치 확인 시간이 초과되었습니다. GPS 또는 Wi‑Fi를 켠 뒤 다시 시도해 주세요.'
-              : '현재 위치를 가져올 수 없습니다. GPS 또는 Wi‑Fi 연결을 확인해 주세요.';
-          setLocationError(message);
-          setIsInsideGeofence(false);
-          setFindingStadium(false);
-        }
-      };
-
-      navigator.geolocation.getCurrentPosition(
-        checkPosition,
-        handleLocationError,
-        highAccuracyOptions
-      );
-
-      watchId = navigator.geolocation.watchPosition(
-        checkPosition,
-        handleLocationError,
-        highAccuracyOptions
-      );
-    } else {
+    if (!('geolocation' in navigator)) {
+      setLocationError('이 브라우저는 위치 정보를 지원하지 않습니다.');
       setIsInsideGeofence(false);
       setFindingStadium(false);
+      return;
     }
+
+    let watchId: number | undefined;
+    let hasLocation = false;
+
+    const checkPosition = (position: GeolocationPosition) => {
+      hasLocation = true;
+      applyGeofenceResult(evaluateGeofence(
+        position.coords.latitude,
+        position.coords.longitude,
+        position.coords.accuracy,
+        stadiums,
+      ));
+    };
+
+    const setFinalLocationError = (error: GeolocationPositionError) => {
+      console.error('Geolocation error:', error);
+      if (hasLocation) return;
+      setLocationError(getLocationErrorMessage(error));
+      setIsInsideGeofence(false);
+      setFindingStadium(false);
+    };
+
+    const handleWatchError = async (error: GeolocationPositionError) => {
+      if (hasLocation) return;
+      console.error('실시간 위치 추적 실패:', error);
+      try {
+        checkPosition(await requestFreshPosition());
+      } catch (fallbackError) {
+        setFinalLocationError(fallbackError as GeolocationPositionError);
+      }
+    };
+
+    requestFreshPosition().then(checkPosition).catch((error) => {
+      setFinalLocationError(error as GeolocationPositionError);
+    });
+    watchId = navigator.geolocation.watchPosition(
+      checkPosition,
+      handleWatchError,
+      HIGH_ACCURACY_OPTIONS,
+    );
 
     return () => {
       if (watchId !== undefined) navigator.geolocation.clearWatch(watchId);
     };
-  }, [stadiums, session]);
+  }, [applyGeofenceResult, stadiums]);
+
+  const verifyCurrentStadiumLocation = async (stadiumId: number): Promise<VerifiedLocation | null> => {
+    if (!('geolocation' in navigator)) {
+      alert('이 브라우저는 위치 정보를 지원하지 않습니다.');
+      return null;
+    }
+
+    setLocationChecking(true);
+    try {
+      // 신청 시점마다 DB 원본 좌표를 다시 읽어 오래된 위치 설정 사용을 방지합니다.
+      const { data, error } = await supabase
+        .from('stadiums')
+        .select('id, name, address, latitude, longitude, radius_meter')
+        .eq('id', stadiumId)
+        .single();
+      if (error) throw error;
+
+      const stadium: Stadium = {
+        id: Number(data.id),
+        name: String(data.name ?? ''),
+        address: String(data.address ?? ''),
+        latitude: Number(data.latitude),
+        longitude: Number(data.longitude),
+        radius_meter: Number(data.radius_meter),
+      };
+      if (!isValidStadiumLocation(stadium)) {
+        setLocationError('구장 위치 설정이 올바르지 않습니다. 관리자에게 문의해 주세요.');
+        alert('구장 위치 설정이 올바르지 않아 신청할 수 없습니다.');
+        return null;
+      }
+
+      const position = await requestFreshPosition();
+      const result = evaluateGeofence(
+        position.coords.latitude,
+        position.coords.longitude,
+        position.coords.accuracy,
+        [stadium],
+      );
+      setStadiums((previous) => previous.map((item) => item.id === stadium.id ? stadium : item));
+      applyGeofenceResult(result);
+
+      if (result.status === 'inside') {
+        return {
+          stadium,
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+        };
+      }
+      if (result.status === 'low-accuracy') {
+        alert(`GPS 정확도가 낮아 신청할 수 없습니다. 잠시 후 다시 시도해 주세요. (현재 오차 ±${Math.round(result.accuracyMeters)}m)`);
+      } else if (result.status === 'outside') {
+        alert(`구장 밖에서는 신청할 수 없습니다. (구장까지 ${Math.round(result.distanceMeters ?? 0)}m / 허용 ${Math.round(result.allowedMeters ?? 0)}m)`);
+      } else {
+        alert('현재 위치를 확인할 수 없어 신청할 수 없습니다.');
+      }
+      return null;
+    } catch (error) {
+      const locationFailure = error as GeolocationPositionError;
+      const message = typeof locationFailure?.code === 'number'
+        ? getLocationErrorMessage(locationFailure)
+        : '구장 위치 정보를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+      setLocationError(message);
+      alert(message);
+      return null;
+    } finally {
+      setLocationChecking(false);
+    }
+  };
 
 
   useEffect(() => {
@@ -439,60 +551,46 @@ export default function Home() {
     }
 
     const savedMemberId = localStorage.getItem('badminton_member_id');
-    if (savedMemberId) {
-      const { data: memberData } = await supabase
-        .from('members')
-        .select('*')
-        .eq('id', savedMemberId)
-        .single();
+    const savedAccessToken = localStorage.getItem(MEMBER_TOKEN_STORAGE_KEY);
+    if (savedMemberId && savedAccessToken) {
+      const { data: memberData, error } = await supabase.rpc('get_member_profile', {
+        p_member_id: savedMemberId,
+        p_access_token: savedAccessToken,
+      });
 
-      if (memberData) {
+      if (!error && memberData) {
+        memberAccessTokenRef.current = savedAccessToken;
         setMember(memberData);
         setNickname(memberData.nickname);
         setSelectedClub(memberData.club_name || '');
         localStorage.setItem('badminton_member_nickname', memberData.nickname);
         localStorage.setItem('badminton_member_club_name', memberData.club_name || '');
-        const { data: sessionData, error: sessionLoadError } = await supabase
-          .from('entry_sessions')
-          .select('*')
-          .eq('user_id', savedMemberId)
-          .eq('is_active', true)
-          .gt('expires_at', new Date().toISOString())
-          .order('entry_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (sessionData) setSession(sessionData);
-        if (sessionLoadError) {
-          console.error('입장 세션 조회 실패:', sessionLoadError);
-        }
-        
-        // 예약 상태 확인
-        const { data: reservationData } = await supabase
-          .from('reservations')
-          .select('court_id, team_number, status')
-          .eq('user_id', savedMemberId)
-          .maybeSingle();
-        
-        if (reservationData) {
-          setMyReservedCourtId(reservationData.court_id);
-          setMyTeamNumber(reservationData.team_number);
-          setMyCurrentStatus(reservationData.status);
-        }
       } else {
         localStorage.removeItem('badminton_member_id');
+        localStorage.removeItem(MEMBER_TOKEN_STORAGE_KEY);
       }
+    } else if (savedMemberId || savedAccessToken) {
+      localStorage.removeItem('badminton_member_id');
+      localStorage.removeItem(MEMBER_TOKEN_STORAGE_KEY);
     }
     setLoading(false);
   };
 
   const checkMyReservation = async () => {
     if (!member) return;
+    const stadiumId = currentStadiumIdRef.current;
+    if (!stadiumId) {
+      setMyReservedCourtId(null);
+      setMyTeamNumber(null);
+      setMyCurrentStatus(null);
+      return;
+    }
     
     const { data } = await supabase
       .from('reservations')
       .select('court_id, team_number, status')
       .eq('user_id', member.id)
+      .eq('stadium_id', stadiumId)
       .maybeSingle();
     
     setMyReservedCourtId(data?.court_id ?? null);
@@ -500,16 +598,60 @@ export default function Home() {
     setMyCurrentStatus(data?.status ?? null);
   };
 
+  useEffect(() => {
+    if (!member || !currentStadium || isInsideGeofence !== true) {
+      setSession(null);
+      return;
+    }
+
+    const stadiumId = currentStadium.id;
+    const loadStadiumSession = async () => {
+      if (creatingSessionRef.current) return;
+      const accessToken = memberAccessTokenRef.current;
+      if (!accessToken) return;
+      creatingSessionRef.current = true;
+      try {
+        const position = await requestFreshPosition();
+        const localResult = evaluateGeofence(
+          position.coords.latitude,
+          position.coords.longitude,
+          position.coords.accuracy,
+          [currentStadium],
+        );
+        if (localResult.status !== 'inside') return;
+
+        const { data: createdSession, error: createError } = await supabase.rpc('enter_stadium_by_location', {
+          p_member_id: member.id,
+          p_access_token: accessToken,
+          p_stadium_id: stadiumId,
+          p_latitude: position.coords.latitude,
+          p_longitude: position.coords.longitude,
+          p_accuracy: position.coords.accuracy,
+        });
+        if (createError) throw createError;
+        if (currentStadiumIdRef.current === stadiumId) setSession(createdSession);
+      } catch (createError) {
+        console.error('위치 기반 입장 세션 생성 실패:', createError);
+      } finally {
+        creatingSessionRef.current = false;
+      }
+    };
+
+    loadStadiumSession();
+    checkMyReservation();
+  }, [member, currentStadium, isInsideGeofence]);
+
   const fetchCourts = async () => {
     if (!currentStadium) return;
-    const { data: courtsData } = await supabase.from('courts').select('*').eq('stadium_id', currentStadium.id).order('id', { ascending: true });
+    const stadiumId = currentStadium.id;
+    const { data: courtsData } = await supabase.from('courts').select('*').eq('stadium_id', stadiumId).order('id', { ascending: true });
     const { data: resData } = await supabase
       .from('reservations')
       .select('court_id, user_id, team_number, status, confirmed_at, members(nickname, club_name)')
-      .eq('stadium_id', currentStadium.id)
+      .eq('stadium_id', stadiumId)
       .order('team_number', { ascending: true });
 
-    if (courtsData) {
+    if (courtsData && currentStadiumIdRef.current === stadiumId) {
       const updatedCourts = courtsData.map(court => {
         const courtReservations = resData?.filter(r => r.court_id === court.id) ?? [];
         
@@ -579,39 +721,17 @@ export default function Home() {
 
   const fetchSettings = async () => {
     if (!currentStadium) return;
+    const stadiumId = currentStadium.id;
     try {
       const { data } = await supabase
-        .from('settings')
-        .select('*')
-        .eq('stadium_id', currentStadium.id)
+        .from('stadium_settings')
+        .select('court_count')
+        .eq('stadium_id', stadiumId)
         .maybeSingle();
 
-      if (data) {
-        setVenueName(data.venue_name || '배드민턴 코트');
-        const rulesText = data.rules || '';
-        
-        let loadedCourtCount = 8;
-        if (data.court_count !== null && data.court_count !== undefined) {
-          loadedCourtCount = Number(data.court_count);
-        } else {
-          const matchCount = rulesText.match(/\[court_count:(\d+)\]/);
-          if (matchCount) {
-            loadedCourtCount = parseInt(matchCount[1], 10);
-          }
-        }
-        setCourtCount(loadedCourtCount);
-
-        let loadedDuration = 120;
-        if (data.duration_minutes !== null && data.duration_minutes !== undefined) {
-          loadedDuration = Number(data.duration_minutes);
-        } else {
-          const matchDuration = rulesText.match(/\[duration_minutes:(\d+)\]/);
-          if (matchDuration) {
-            loadedDuration = parseInt(matchDuration[1], 10);
-          }
-        }
-        setDurationMinutes(loadedDuration);
-
+      if (data && currentStadiumIdRef.current === stadiumId) {
+        setVenueName(currentStadium.name);
+        setCourtCount(Number(data.court_count ?? 8));
       }
     } catch (e) {
       // Ignore settings fetch error
@@ -633,51 +753,58 @@ export default function Home() {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nickname.trim()) return;
+    if (!nickname.trim() || locationChecking) return;
 
     // 위치 기반 체크
-    if (isInsideGeofence !== true) {
+    if (isInsideGeofence !== true || !currentStadium) {
       alert('구장 내에서만 입장(닉네임 등록)이 가능합니다. 위치 서비스를 승인하고 구장에 접근해 주세요.');
       return;
     }
+    const verifiedLocation = await verifyCurrentStadiumLocation(currentStadium.id);
+    if (!verifiedLocation) return;
 
-    const { data, error } = await supabase
-      .from('members')
-      .insert([{ nickname, club_name: selectedClub }])
-      .select()
-      .single();
+    const { data, error } = await supabase.rpc('register_member_at_stadium', {
+      p_nickname: nickname.trim(),
+      p_club_name: selectedClub || null,
+      p_stadium_id: verifiedLocation.stadium.id,
+      p_latitude: verifiedLocation.latitude,
+      p_longitude: verifiedLocation.longitude,
+      p_accuracy: verifiedLocation.accuracy,
+    });
 
     if (error) {
       alert('등록 중 오류가 발생했습니다.');
       return;
     }
 
-    if (data) {
-      localStorage.setItem('badminton_member_id', data.id);
-      localStorage.setItem('badminton_member_nickname', data.nickname);
-      localStorage.setItem('badminton_member_club_name', data.club_name || '');
-      setMember(data);
-      
-      // kmswg entry_sessions.id has no database default, so provide the UUID explicitly.
-      const expiresAt = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
-      const entryId = crypto.randomUUID();
-      const { data: entryData, error: entryError } = await supabase
-        .from('entry_sessions')
-        .insert({ id: entryId, user_id: data.id, expires_at: expiresAt, stadium_id: currentStadium?.id })
-        .select()
-        .single();
-      
-      if (entryError) {
-        console.error('자동 입장 처리 실패:', entryError);
-        alert(`입장 처리 중 오류가 발생했습니다: ${entryError.message}`);
-      }
-      if (entryData) setSession(entryData);
+    if (data?.member && data?.access_token && data?.session) {
+      const registeredMember = data.member as Member;
+      const accessToken = String(data.access_token);
+      localStorage.setItem('badminton_member_id', registeredMember.id);
+      localStorage.setItem(MEMBER_TOKEN_STORAGE_KEY, accessToken);
+      localStorage.setItem('badminton_member_nickname', registeredMember.nickname);
+      localStorage.setItem('badminton_member_club_name', registeredMember.club_name || '');
+      memberAccessTokenRef.current = accessToken;
+      setSession(data.session as EntrySession);
+      setMember(registeredMember);
     }
   };
 
   const handleReserve = async (courtId: number, teamNumber: number) => {
     if (!member || !session) {
       alert('입장 처리가 필요합니다.');
+      return;
+    }
+    if (locationChecking) return;
+    if (isInsideGeofence !== true || !currentStadium) {
+      alert('현재 구장 안에서만 코트 신청이 가능합니다.');
+      return;
+    }
+    const verifiedLocation = await verifyCurrentStadiumLocation(currentStadium.id);
+    if (!verifiedLocation) return;
+    const accessToken = memberAccessTokenRef.current;
+    if (!accessToken) {
+      alert('회원 인증 정보가 없습니다. 다시 등록해 주세요.');
       return;
     }
 
@@ -698,9 +825,16 @@ export default function Home() {
       }
     }
 
-    const { error } = await supabase
-      .from('reservations')
-      .insert({ court_id: courtId, user_id: member.id, team_number: teamNumber, stadium_id: currentStadium?.id });
+    const { error } = await supabase.rpc('reserve_court_at_stadium', {
+      p_member_id: member.id,
+      p_access_token: accessToken,
+      p_court_id: courtId,
+      p_team_number: teamNumber,
+      p_stadium_id: verifiedLocation.stadium.id,
+      p_latitude: verifiedLocation.latitude,
+      p_longitude: verifiedLocation.longitude,
+      p_accuracy: verifiedLocation.accuracy,
+    });
 
     if (error) {
       if (error.code === '23505') {
@@ -725,12 +859,14 @@ export default function Home() {
 
     const confirmed = confirm('신청을 취소하시겠습니까?');
     if (!confirmed) return;
+    const accessToken = memberAccessTokenRef.current;
+    if (!accessToken) return;
 
-    const { error } = await supabase
-      .from('reservations')
-      .delete()
-      .eq('user_id', member.id)
-      .eq('court_id', myReservedCourtId);
+    const { error } = await supabase.rpc('cancel_court_reservation', {
+      p_member_id: member.id,
+      p_access_token: accessToken,
+      p_court_id: myReservedCourtId,
+    });
 
     if (error) {
       alert('예약 취소 중 오류가 발생했습니다.');
@@ -744,15 +880,24 @@ export default function Home() {
   };
 
   const handleEndGame = async (courtId: number) => {
-    if (!member) return;
+    if (!member || !currentStadium) return;
 
     const confirmed = confirm('경기를 종료하시겠습니까?');
     if (!confirmed) return;
 
     try {
-      const { data, error } = await supabase.rpc('end_game', {
+      const verifiedLocation = await verifyCurrentStadiumLocation(currentStadium.id);
+      const accessToken = memberAccessTokenRef.current;
+      if (!verifiedLocation || !accessToken) return;
+
+      const { data, error } = await supabase.rpc('end_game_secure', {
         p_court_id: courtId,
-        p_user_id: member.id
+        p_member_id: member.id,
+        p_access_token: accessToken,
+        p_stadium_id: verifiedLocation.stadium.id,
+        p_latitude: verifiedLocation.latitude,
+        p_longitude: verifiedLocation.longitude,
+        p_accuracy: verifiedLocation.accuracy,
       });
 
       if (error) {
@@ -829,7 +974,9 @@ export default function Home() {
             <div className="bg-rose-50 border border-rose-100 text-rose-700 px-3.5 py-3 rounded-2xl mb-3 text-[10px] font-bold text-left leading-normal flex items-start gap-1.5 shadow-sm">
               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-rose-500" />
               <span>
-                {locationError || '구장 밖으로 확인되었습니다. 구장 내로 이동한 뒤 잠시 후 다시 확인해 주세요.'}
+                {locationError || (isInsideGeofence === null
+                  ? 'GPS 정확도를 개선하는 중입니다. 창가나 야외에서 잠시 기다려 주세요.'
+                  : '구장 밖으로 확인되었습니다. 구장 내로 이동한 뒤 잠시 후 다시 확인해 주세요.')}
                 {locationDiagnostic && !locationError && (
                   <span className="block mt-1 text-rose-500">
                     현재 거리 {locationDiagnostic.distanceMeters}m · GPS 오차 ±{locationDiagnostic.accuracyMeters}m · 허용 거리 {locationDiagnostic.allowedMeters}m
@@ -887,14 +1034,14 @@ export default function Home() {
             </div>
             <button
               type="submit"
-      disabled={isInsideGeofence !== true}
+              disabled={isInsideGeofence !== true || locationChecking}
               className={`w-full py-3 rounded-xl text-sm font-bold transition-all shadow-lg active:scale-[0.98] ${
-                isInsideGeofence !== true
+                isInsideGeofence !== true || locationChecking
                   ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
                   : 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white hover:from-indigo-700 hover:to-indigo-800'
               }`}
             >
-              닉네임 등록하고 입장하기
+              {locationChecking ? '위치 재확인 중...' : '닉네임 등록하고 입장하기'}
             </button>
           </form>
 
@@ -962,7 +1109,9 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 mt-3">
           <div className="bg-rose-50 border border-rose-100 text-rose-700 px-4 py-3 rounded-2xl text-xs font-semibold text-left leading-normal flex items-start gap-2 shadow-sm">
             <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-            <span>위치 기반 서비스 권한이 허용되지 않았거나 구장 밖입니다. 위치 권한을 허용하고 구장 내부에서 이용해 주세요. (미허용 시 실시간 순서 대기 및 앱 사용이 불가합니다.)</span>
+            <span>{locationError || (isInsideGeofence === null
+              ? 'GPS 정확도를 확인하는 중입니다. 정확한 위치가 확인될 때까지 신청할 수 없습니다.'
+              : '구장 밖으로 확인되어 신청할 수 없습니다. 구장 안으로 이동해 주세요.')}</span>
           </div>
         </div>
       )}
@@ -1005,10 +1154,13 @@ export default function Home() {
                 const newClub = e.target.value;
                 if (!newClub) return;
                 try {
-                  const { error } = await supabase
-                    .from('members')
-                    .update({ club_name: newClub })
-                    .eq('id', member.id);
+                  const accessToken = memberAccessTokenRef.current;
+                  if (!accessToken) throw new Error('회원 인증 정보가 없습니다.');
+                  const { error } = await supabase.rpc('update_member_club', {
+                    p_member_id: member.id,
+                    p_access_token: accessToken,
+                    p_club_name: newClub,
+                  });
                   if (error) {
                     alert('클럽 변경에 실패했습니다.');
                   } else {
@@ -1040,6 +1192,9 @@ export default function Home() {
             <button
               onClick={() => {
                 localStorage.removeItem('badminton_member_id');
+                localStorage.removeItem(MEMBER_TOKEN_STORAGE_KEY);
+                localStorage.removeItem('badminton_member_nickname');
+                localStorage.removeItem('badminton_member_club_name');
                 window.location.reload();
               }}
               className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
@@ -1286,9 +1441,9 @@ export default function Home() {
                                     ? 'bg-slate-300 text-slate-600'
                                     : 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white hover:from-indigo-700 hover:to-indigo-800'
                                 }`}
-                                disabled={!session || myReservedCourtId !== null || isFull || court.is_active === false || ['occupied', 'lesson', 'beginner', 'reservation_only', 'maintenance'].includes(court.status) || isDifferentClub}
+                                disabled={isInsideGeofence !== true || locationChecking || !session || myReservedCourtId !== null || isFull || court.is_active === false || ['occupied', 'lesson', 'beginner', 'reservation_only', 'maintenance'].includes(court.status) || isDifferentClub}
                               >
-                                {isDifferentClub ? '클럽다름' : `신청 ${teamNum}`}
+                                {locationChecking ? '위치 확인' : isDifferentClub ? '클럽다름' : `신청 ${teamNum}`}
                                 {team && <span className="text-[10px]">({team.members.length}/4)</span>}
                                 {isFull && <span className="text-[10px]">마감</span>}
                               </button>

@@ -1,101 +1,19 @@
--- Legacy schema repair for the current /admin page.
--- This file does not create or modify any Auth account or password.
+-- 최고 관리자는 스키마 마이그레이션 적용 후 /admin/login에서 생성합니다.
+--
+-- 1. Supabase Auth에 이메일 사용자를 생성하거나 회원가입합니다.
+-- 2. 아직 admin_users가 비어 있으면 최초 로그인 사용자가
+--    bootstrap_first_superadmin()을 통해 최고 관리자로 등록됩니다.
+-- 3. 이후 관리자는 최고 관리자 화면의 "매니저 관리"에서 추가합니다.
+--
+-- 과거 버전처럼 authenticated 전체에 admin_users 쓰기 권한을 부여하면
+-- 누구나 최고 관리자 권한을 만들 수 있으므로 이 파일은 권한을 변경하지 않습니다.
 
-create table if not exists public.stadiums (
-  id serial primary key,
-  name varchar(100) not null,
-  address varchar(255),
-  latitude double precision,
-  longitude double precision,
-  radius_meter integer default 500,
-  created_at timestamptz default now()
-);
-
-insert into public.stadiums (id, name)
-values (1, '기본 구장')
-on conflict (id) do nothing;
-
-create table if not exists public.admin_users (
-  id serial primary key,
-  email varchar(255) unique not null,
-  role varchar(20) not null check (role in ('superadmin', 'manager')),
-  stadium_id integer references public.stadiums(id),
-  created_at timestamptz default now()
-);
-
-alter table public.admin_users enable row level security;
-
-grant select, insert, update, delete on public.admin_users to authenticated;
-grant usage, select on sequence public.admin_users_id_seq to authenticated;
-
-do $$
-begin
-  drop policy if exists "Enable read access for authenticated users" on public.admin_users;
-  drop policy if exists "Enable write access for authenticated users" on public.admin_users;
-  drop policy if exists "authenticated users can read admin roles" on public.admin_users;
-  drop policy if exists "authenticated users can manage admin roles" on public.admin_users;
-  drop policy if exists "authenticated admin users can read roles" on public.admin_users;
-  drop policy if exists "authenticated admin users can manage roles" on public.admin_users;
-
-  create policy "authenticated admin users can read roles"
-    on public.admin_users for select to authenticated using (true);
-
-  create policy "authenticated admin users can manage roles"
-    on public.admin_users for all to authenticated
-    using (true) with check (true);
-end;
-$$;
-
--- Repair the legacy statistics trigger. The old ON CONFLICT(stat_date)
--- clause fails after stadium-scoped unique constraints are introduced.
-create or replace function public.update_daily_statistics()
-returns trigger
-language plpgsql
-as $$
-begin
-  if tg_table_name = 'entry_sessions' and tg_op = 'INSERT' then
-    update public.daily_statistics
-    set total_entries = coalesce(total_entries, 0) + 1, updated_at = now()
-    where stat_date = current_date;
-    if not found then
-      begin
-        insert into public.daily_statistics (stat_date, total_entries)
-        values (current_date, 1);
-      exception when unique_violation then
-        update public.daily_statistics
-        set total_entries = coalesce(total_entries, 0) + 1, updated_at = now()
-        where stat_date = current_date;
-      end;
-    end if;
-  elsif tg_table_name = 'reservations' and tg_op = 'INSERT' then
-    update public.daily_statistics
-    set total_reservations = coalesce(total_reservations, 0) + 1, updated_at = now()
-    where stat_date = current_date;
-    if not found then
-      begin
-        insert into public.daily_statistics (stat_date, total_reservations)
-        values (current_date, 1);
-      exception when unique_violation then
-        update public.daily_statistics
-        set total_reservations = coalesce(total_reservations, 0) + 1, updated_at = now()
-        where stat_date = current_date;
-      end;
-    end if;
-  elsif tg_table_name = 'court_usage' and tg_op = 'INSERT' then
-    update public.daily_statistics
-    set total_matches = coalesce(total_matches, 0) + 1, updated_at = now()
-    where stat_date = current_date;
-    if not found then
-      begin
-        insert into public.daily_statistics (stat_date, total_matches)
-        values (current_date, 1);
-      exception when unique_violation then
-        update public.daily_statistics
-        set total_matches = coalesce(total_matches, 0) + 1, updated_at = now()
-        where stat_date = current_date;
-      end;
-    end if;
-  end if;
-  return new;
-end;
-$$;
+select
+  au.id,
+  au.email,
+  au.role,
+  au.stadium_id,
+  au.auth_user_id,
+  au.created_at
+from public.admin_users au
+order by au.id;

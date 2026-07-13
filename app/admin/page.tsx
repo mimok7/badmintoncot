@@ -18,7 +18,6 @@ import {
     Printer,
     LogOut
 } from 'lucide-react';
-import { BadmintonIcon } from '../components/BadmintonIcon';
 
 type MenuType = 'qr' | 'courts' | 'usage' | 'settings' | 'clubs' | 'managers';
 
@@ -52,7 +51,6 @@ interface Settings {
     rules: string;
     courtCount: number;
     durationMinutes: number;
-    useGeofence: boolean;
     locationLat: number;
     locationLng: number;
     locationRadius: number;
@@ -77,7 +75,6 @@ export default function AdminPage() {
         rules: '• 코트 이용 시간은 2시간으로 제한됩니다.\n• 4명이 모여야 코트 사용이 가능합니다.\n• 안전을 위해 운동화를 착용해주세요.\n• 코트 내 음식물 반입을 금지합니다.',
         courtCount: 8,
         durationMinutes: 120,
-        useGeofence: true,
         locationLat: 37.5665,
         locationLng: 126.9780,
         locationRadius: 100
@@ -159,54 +156,19 @@ export default function AdminPage() {
         }
 
         try {
-            // 1. Add stadium
+            // 구장, 기본 설정, 코트를 DB 트랜잭션 하나로 생성합니다.
             const { data: newStadium, error: stadiumError } = await supabase
-                .from('stadiums')
-                .insert({
-                    name: newStadiumName.trim(),
-                    address: newStadiumAddress.trim() || '주소 미지정',
-                    latitude: newStadiumLat,
-                    longitude: newStadiumLng,
-                    radius_meter: newStadiumRadius
-                })
-                .select()
-                .single();
+                .rpc('create_stadium_with_defaults', {
+                    p_name: newStadiumName.trim(),
+                    p_address: newStadiumAddress.trim() || '주소 미지정',
+                    p_latitude: newStadiumLat,
+                    p_longitude: newStadiumLng,
+                    p_radius_meter: newStadiumRadius,
+                    p_court_count: 8,
+                });
 
             if (stadiumError) throw stadiumError;
-
-            // 2. Create default settings for the new stadium
-            const rulesText = '• 코트 이용 시간은 2시간으로 제한됩니다.\n• 4명이 모여야 코트 사용이 가능합니다.\n• 안전을 위해 운동화를 착용해주세요.\n• 코트 내 음식물 반입을 금지합니다.';
-            const rulesWithMetadata = `${rulesText}\n\n[court_count:8][duration_minutes:120][use_geofence:false][location_lat:${newStadiumLat}][location_lng:${newStadiumLng}][location_radius:${newStadiumRadius}]`;
-            
-            const { error: settingsError } = await supabase
-                .from('settings')
-                .insert({
-                    stadium_id: newStadium.id,
-                    venue_name: newStadiumName.trim(),
-                    operating_hours: '평일: 06:00 - 23:00 | 주말: 07:00 - 22:00',
-                    contact_info: '전화번호 미등록',
-                    rules: rulesWithMetadata,
-                    court_count: 8,
-                    duration_minutes: 120,
-                    use_geofence: false,
-                    location_lat: newStadiumLat,
-                    location_lng: newStadiumLng,
-                    location_radius: newStadiumRadius
-                });
-
-            if (settingsError) throw settingsError;
-
-            // 3. Create 8 default courts for the new stadium
-            const defaultCourts = [];
-            for (let i = 1; i <= 8; i++) {
-                defaultCourts.push({
-                    stadium_id: newStadium.id,
-                    name: `코트 ${i}`,
-                    status: 'available'
-                });
-            }
-            const { error: courtsError } = await supabase.from('courts').insert(defaultCourts);
-            if (courtsError) throw courtsError;
+            if (!newStadium) throw new Error('생성된 구장 정보를 받지 못했습니다.');
 
             alert(`새 구장 '${newStadiumName}'이(가) 추가되었습니다. 8개 코트와 기본 설정이 완료되었습니다.`);
             
@@ -235,22 +197,23 @@ export default function AdminPage() {
             const email = session.user.email || '';
             setUserEmail(email);
 
-            const { data: adminUser } = await supabase.from('admin_users').select('*').eq('email', email).maybeSingle();
+            let { data: adminUser, error: adminLookupError } = await supabase.rpc('get_current_admin');
+            if (adminLookupError) throw adminLookupError;
             
             let currentRole: 'superadmin' | 'manager' = 'superadmin';
             let currentAdminStadiumId: number | null = null;
 
             if (!adminUser) {
-                const { count } = await supabase.from('admin_users').select('*', { count: 'exact', head: true });
-                if (count === 0) {
-                    await supabase.from('admin_users').insert({ email, role: 'superadmin' });
-                    setAdminRole('superadmin');
-                } else {
+                const bootstrapResult = await supabase.rpc('bootstrap_first_superadmin');
+                if (bootstrapResult.error || !bootstrapResult.data) {
                     alert('승인되지 않은 관리자 계정입니다. 최고 관리자에게 문의하세요.');
                     await supabase.auth.signOut();
                     router.push('/admin/login');
                     return;
                 }
+                adminUser = bootstrapResult.data;
+                currentRole = 'superadmin';
+                setAdminRole('superadmin');
             } else {
                 currentRole = adminUser.role;
                 currentAdminStadiumId = adminUser.stadium_id;
@@ -286,31 +249,8 @@ export default function AdminPage() {
     };
 
     const handleSaveSettings = async () => {
+        if (!currentStadiumId) return;
         try {
-            // Sync courts in DB based on configuration
-            const targetCount = settings.courtCount;
-            const currentCourtsCount = courts.length;
-
-            if (targetCount > currentCourtsCount) {
-                const newCourts = [];
-                for (let i = currentCourtsCount + 1; i <= targetCount; i++) {
-                    newCourts.push({
-                        name: `코트 ${i}`,
-                        status: 'available'
-                    });
-                }
-
-                const { error: insertError } = await supabase
-                    .from('courts')
-                    .insert(newCourts.map(c => ({...c, stadium_id: currentStadiumId})));
-
-                if (insertError) {
-                    console.error('Failed to add courts:', insertError);
-                    alert(`코트 추가 생성 중 권한 오류가 발생했습니다.\nSupabase SQL Editor에서 아래 SQL을 실행해 주세요:\n\nCREATE POLICY "Enable insert for authenticated users" ON courts FOR INSERT TO authenticated WITH CHECK (true);`);
-                    return;
-                }
-            }
-
             // Save individual court statuses
             const updatePromises = Object.entries(tempCourtStatuses).map(([courtId, status]) => {
                 return supabase
@@ -320,37 +260,18 @@ export default function AdminPage() {
             });
             await Promise.all(updatePromises);
 
-            // Append court_count & duration_minutes & geofence info hidden metadata to rules text
-            const rulesWithMetadata = `${settings.rules}\n\n[court_count:${settings.courtCount}][duration_minutes:${settings.durationMinutes || 120}][use_geofence:${settings.useGeofence}][location_lat:${settings.locationLat}][location_lng:${settings.locationLng}][location_radius:${settings.locationRadius}]`;
-
-            // 위치 판정은 모든 화면에서 stadiums를 기준으로 하므로 항상 함께 저장합니다.
-            const { error: stadiumError } = await supabase.from('stadiums').update({
-                name: settings.venueName,
-                latitude: settings.locationLat,
-                longitude: settings.locationLng,
-                radius_meter: settings.locationRadius
-            }).eq('id', currentStadiumId);
-            if (stadiumError) throw stadiumError;
-
-            const { error } = await supabase
-                .from('settings')
-                .upsert({
-                    stadium_id: currentStadiumId,
-                    
-                    venue_name: settings.venueName,
-                    operating_hours: settings.operatingHours,
-                    contact_info: settings.contactInfo,
-                    rules: rulesWithMetadata,
-                    updated_at: new Date().toISOString(),
-                    court_count: settings.courtCount,
-                    duration_minutes: settings.durationMinutes,
-                    use_geofence: settings.useGeofence,
-                    location_lat: settings.locationLat,
-                    location_lng: settings.locationLng,
-                    location_radius: settings.locationRadius
-                }, {
-                    onConflict: 'stadium_id'
-                });
+            const { error } = await supabase.rpc('save_stadium_configuration', {
+                p_stadium_id: currentStadiumId,
+                p_name: settings.venueName.trim(),
+                p_latitude: settings.locationLat,
+                p_longitude: settings.locationLng,
+                p_radius_meter: settings.locationRadius,
+                p_operating_hours: settings.operatingHours,
+                p_contact_info: settings.contactInfo,
+                p_rules: settings.rules,
+                p_court_count: settings.courtCount,
+                p_duration_minutes: settings.durationMinutes,
+            });
 
             if (error) throw error;
 
@@ -365,33 +286,18 @@ export default function AdminPage() {
     const handleSaveLocationSettings = async () => {
         if (!currentStadiumId) return;
         try {
-            const rulesWithMetadata = `${settings.rules}\n\n[court_count:${settings.courtCount}][duration_minutes:${settings.durationMinutes || 120}][use_geofence:${settings.useGeofence}][location_lat:${settings.locationLat}][location_lng:${settings.locationLng}][location_radius:${settings.locationRadius}]`;
-
-            const { error: stadiumError } = await supabase.from('stadiums').update({
-                latitude: settings.locationLat,
-                longitude: settings.locationLng,
-                radius_meter: settings.locationRadius
-            }).eq('id', currentStadiumId);
-            if (stadiumError) throw stadiumError;
-
-            const { error } = await supabase
-                .from('settings')
-                .upsert({
-                    stadium_id: currentStadiumId,
-                    venue_name: settings.venueName,
-                    operating_hours: settings.operatingHours,
-                    contact_info: settings.contactInfo,
-                    rules: rulesWithMetadata,
-                    updated_at: new Date().toISOString(),
-                    court_count: settings.courtCount,
-                    duration_minutes: settings.durationMinutes,
-                    use_geofence: settings.useGeofence,
-                    location_lat: settings.locationLat,
-                    location_lng: settings.locationLng,
-                    location_radius: settings.locationRadius
-                }, {
-                    onConflict: 'stadium_id'
-                });
+            const { error } = await supabase.rpc('save_stadium_configuration', {
+                p_stadium_id: currentStadiumId,
+                p_name: settings.venueName.trim(),
+                p_latitude: settings.locationLat,
+                p_longitude: settings.locationLng,
+                p_radius_meter: settings.locationRadius,
+                p_operating_hours: settings.operatingHours,
+                p_contact_info: settings.contactInfo,
+                p_rules: settings.rules,
+                p_court_count: settings.courtCount,
+                p_duration_minutes: settings.durationMinutes,
+            });
 
             if (error) throw error;
             alert('위치 정보가 저장되었습니다!');
@@ -418,7 +324,7 @@ export default function AdminPage() {
             .channel(`admin-changes-${currentStadiumId}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'courts', filter: `stadium_id=eq.${currentStadiumId}` }, fetchCourts)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'entry_sessions', filter: `stadium_id=eq.${currentStadiumId}` }, fetchActiveSessions)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'settings', filter: `stadium_id=eq.${currentStadiumId}` }, fetchSettings)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'stadium_settings', filter: `stadium_id=eq.${currentStadiumId}` }, fetchSettings)
             .subscribe();
 
         return () => {
@@ -635,104 +541,37 @@ export default function AdminPage() {
     const fetchSettings = async () => {
         if (!currentStadiumId) return;
         try {
-            const { data, error } = await supabase
-                .from('settings')
-                .select('*')
-                .eq('stadium_id', currentStadiumId)
-                .maybeSingle();
+            const [stadiumResult, settingsResult] = await Promise.all([
+                supabase
+                    .from('stadiums')
+                    .select('id, name, latitude, longitude, radius_meter')
+                    .eq('id', currentStadiumId)
+                    .single(),
+                supabase
+                    .from('stadium_settings')
+                    .select('stadium_id, operating_hours, contact_info, rules, court_count, duration_minutes')
+                    .eq('stadium_id', currentStadiumId)
+                    .maybeSingle(),
+            ]);
 
-            if (error) throw error;
+            if (stadiumResult.error) throw stadiumResult.error;
+            if (settingsResult.error) throw settingsResult.error;
 
-            if (!data) {
-                // If settings do not exist for the stadium, initialize with defaults
-                const rulesText = '• 코트 이용 시간은 2시간으로 제한됩니다.\n• 4명이 모여야 코트 사용이 가능합니다.\n• 안전을 위해 운동화를 착용해주세요.\n• 코트 내 음식물 반입을 금지합니다.';
-                const rulesWithMetadata = `${rulesText}\n\n[court_count:8][duration_minutes:120][use_geofence:false][location_lat:37.5665][location_lng:126.9780][location_radius:100]`;
-                await supabase.from('settings').insert({
-                    stadium_id: currentStadiumId,
-                    venue_name: '스마트 배드민턴 코트',
-                    operating_hours: '평일: 06:00 - 23:00 | 주말: 07:00 - 22:00',
-                    contact_info: '전화번호 미등록',
-                    rules: rulesWithMetadata,
-                    court_count: 8,
-                    duration_minutes: 120,
-                    use_geofence: false,
-                    location_lat: 37.5665,
-                    location_lng: 126.9780,
-                    location_radius: 100
-                });
-                fetchSettings();
-                return;
-            }
-
-            if (data) {
-                const rulesText = data.rules || '';
-                const cleanRules = rulesText
-                    .replace(/\n\n\[court_count:\d+\].*$/, '')
-                    .replace(/\[court_count:\d+\]/, '')
-                    .replace(/\[duration_minutes:\d+\]/, '')
-                    .replace(/\[use_geofence:\w+\]/, '')
-                    .replace(/\[location_lat:[\d.-]+\]/, '')
-                    .replace(/\[location_lng:[\d.-]+\]/, '')
-                    .replace(/\[location_radius:\d+\]/, '');
-                
-                let loadedCourtCount = 8;
-                if (data.court_count !== null && data.court_count !== undefined) {
-                    loadedCourtCount = Number(data.court_count);
-                } else {
-                    const matchCount = rulesText.match(/\[court_count:(\d+)\]/);
-                    if (matchCount) loadedCourtCount = parseInt(matchCount[1], 10);
-                }
-
-                let loadedDuration = 120;
-                if (data.duration_minutes !== null && data.duration_minutes !== undefined) {
-                    loadedDuration = Number(data.duration_minutes);
-                } else {
-                    const matchDuration = rulesText.match(/\[duration_minutes:(\d+)\]/);
-                    if (matchDuration) loadedDuration = parseInt(matchDuration[1], 10);
-                }
-
-                // 입장 방식은 항상 위치 기반으로 고정합니다.
-                const loadedUseGeofence = true;
-
-                let loadedLat = 37.5665;
-                if (data.location_lat !== null && data.location_lat !== undefined) {
-                    loadedLat = Number(data.location_lat);
-                } else {
-                    const matchLat = rulesText.match(/\[location_lat:([\d.-]+)\]/);
-                    if (matchLat) loadedLat = parseFloat(matchLat[1]);
-                }
-
-                let loadedLng = 126.9780;
-                if (data.location_lng !== null && data.location_lng !== undefined) {
-                    loadedLng = Number(data.location_lng);
-                } else {
-                    const matchLng = rulesText.match(/\[location_lng:([\d.-]+)\]/);
-                    if (matchLng) loadedLng = parseFloat(matchLng[1]);
-                }
-
-                let loadedRadius = 100;
-                if (data.location_radius !== null && data.location_radius !== undefined) {
-                    loadedRadius = Number(data.location_radius);
-                } else {
-                    const matchRadius = rulesText.match(/\[location_radius:(\d+)\]/);
-                    if (matchRadius) loadedRadius = parseInt(matchRadius[1], 10);
-                }
-
-                setSettings({
-                    venueName: data.venue_name || '',
-                    operatingHours: data?.operating_hours || '',
-                    contactInfo: data?.contact_info || '',
-                    rules: cleanRules.trim(),
-                    courtCount: loadedCourtCount,
-                    durationMinutes: loadedDuration,
-                    useGeofence: loadedUseGeofence,
-                    locationLat: loadedLat,
-                    locationLng: loadedLng,
-                    locationRadius: loadedRadius
-                });
-            }
+            const stadium = stadiumResult.data;
+            const data = settingsResult.data;
+            setSettings({
+                venueName: stadium.name,
+                operatingHours: data?.operating_hours || '평일: 06:00 - 23:00 | 주말: 07:00 - 22:00',
+                contactInfo: data?.contact_info || '전화번호 미등록',
+                rules: data?.rules || '• 코트 이용 시간은 2시간으로 제한됩니다.\n• 4명이 모여야 코트 사용이 가능합니다.\n• 안전을 위해 운동화를 착용해주세요.\n• 코트 내 음식물 반입을 금지합니다.',
+                courtCount: Number(data?.court_count ?? 8),
+                durationMinutes: Number(data?.duration_minutes ?? 120),
+                locationLat: Number(stadium.latitude),
+                locationLng: Number(stadium.longitude),
+                locationRadius: Number(stadium.radius_meter),
+            });
         } catch (error) {
-            // Ignore settings fetch error
+            console.error('구장 설정 조회 실패:', error);
         }
     };
 
@@ -838,7 +677,6 @@ export default function AdminPage() {
 
     const menuItems = [
         { id: 'qr' as MenuType, icon: Printer, label: '접속 QR 안내', color: 'slate' },
-        { id: 'qr' as MenuType, icon: BadmintonIcon, label: 'QR 생성', color: 'slate' },
         { id: 'courts' as MenuType, icon: LayoutDashboard, label: '코트 현황', color: 'slate' },
         { id: 'usage' as MenuType, icon: Activity, label: '사용 현황', color: 'slate' },
         { id: 'clubs' as MenuType, icon: Users, label: '클럽 관리', color: 'slate' },
@@ -1582,12 +1420,12 @@ export default function AdminPage() {
                                             }
                                         }
 
-                                        // 2. Upsert the role so retrying after a partial failure is safe.
-                                        const { error: dbError } = await supabase.from('admin_users').upsert({
-                                            email,
-                                            role: newAdminRole,
-                                            stadium_id: newAdminRole === 'manager' ? newAdminTargetStadium : null
-                                        }, { onConflict: 'email' });
+                                        // 2. Auth 사용자 ID와 관리자 권한을 DB에서 안전하게 연결합니다.
+                                        const { error: dbError } = await supabase.rpc('upsert_admin_user', {
+                                            p_email: email,
+                                            p_role: newAdminRole,
+                                            p_stadium_id: newAdminRole === 'manager' ? newAdminTargetStadium : null,
+                                        });
                                         if (dbError) {
                                             throw new Error(`관리자 권한 저장 실패: ${dbError.message}`);
                                         }
