@@ -1,4 +1,4 @@
-const CACHE_NAME = 'badcot-cache-v3';
+const CACHE_NAME = 'badcot-cache-v4';
 const ASSETS_TO_CACHE = [
   '/manifest.json',
   '/badcotlogo.png'
@@ -48,24 +48,28 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
+  event.respondWith((async () => {
+    try {
+      const cachedResponse = await caches.match(event.request);
+      if (cachedResponse) return cachedResponse;
+
+      const response = await fetch(event.request);
+
+      // 허용한 정적 자산만 동적으로 캐시한다.
+      if (response.status === 200 && ASSETS_TO_CACHE.includes(requestUrl.pathname)) {
+        const responseClone = response.clone();
+        void caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
       }
-      return fetch(event.request).then((response) => {
-        // 허용한 정적 자산만 동적으로 캐시한다.
-        if (response.status === 200 && ASSETS_TO_CACHE.includes(requestUrl.pathname)) {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
-          });
-        }
-        return response;
+      return response;
+    } catch {
+      // '/'는 install 단계에서 캐시하지 않으므로 caches.match('/')가
+      // undefined일 수 있다. respondWith()에는 항상 Response를 반환해야 한다.
+      const offlineResponse = await caches.match('/');
+      return offlineResponse ?? new Response('Offline', {
+        status: 503,
+        statusText: 'Service Unavailable',
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
       });
-    }).catch(() => {
-      // Offline fallback
-      return caches.match('/');
-    })
-  );
+    }
+  })());
 });

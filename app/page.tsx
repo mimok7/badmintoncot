@@ -80,8 +80,14 @@ const FALLBACK_LOCATION_OPTIONS: PositionOptions = {
   maximumAge: 0,
 };
 
+const MOBILE_DEVICE_PATTERN = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i;
+
+// 스마트폰은 GPS를 우선 사용하고, 데스크톱은 Wi‑Fi/네트워크 기반 위치를 우선 요청한다.
 async function requestFreshPosition(): Promise<GeolocationPosition> {
   return new Promise((resolve, reject) => {
+    const preferGps = MOBILE_DEVICE_PATTERN.test(navigator.userAgent);
+    const primaryOptions = preferGps ? HIGH_ACCURACY_OPTIONS : FALLBACK_LOCATION_OPTIONS;
+    const secondaryOptions = preferGps ? FALLBACK_LOCATION_OPTIONS : HIGH_ACCURACY_OPTIONS;
     let bestPosition: GeolocationPosition | null = null;
     let lastError: GeolocationPositionError | null = null;
     let watchId: number | undefined;
@@ -111,22 +117,24 @@ async function requestFreshPosition(): Promise<GeolocationPosition> {
     };
 
     const timeoutId = window.setTimeout(() => {
-      if (bestPosition) {
-        finish();
-        return;
-      }
+      // 기본 방식이 실패하면 반대 방식도 한 번 시도한다.
       navigator.geolocation.getCurrentPosition(
-        handlePosition,
+        (position) => {
+          handlePosition(position);
+          // 오차가 100m보다 크더라도 결과를 반환해 진단 메시지를 보여준다.
+          // 실제 입장/신청 허용 여부는 evaluateGeofence가 계속 판단한다.
+          finish();
+        },
         (error) => {
           lastError = error;
           finish();
         },
-        FALLBACK_LOCATION_OPTIONS,
+        secondaryOptions,
       );
-    }, 30000);
+    }, 10000);
 
-    watchId = navigator.geolocation.watchPosition(handlePosition, handleError, HIGH_ACCURACY_OPTIONS);
-    navigator.geolocation.getCurrentPosition(handlePosition, handleError, HIGH_ACCURACY_OPTIONS);
+    watchId = navigator.geolocation.watchPosition(handlePosition, handleError, primaryOptions);
+    navigator.geolocation.getCurrentPosition(handlePosition, handleError, primaryOptions);
   });
 }
 
@@ -137,7 +145,7 @@ function getLocationErrorMessage(error: GeolocationPositionError): string {
   if (error.code === error.TIMEOUT) {
     return '위치 확인 시간이 초과되었습니다. GPS와 Wi‑Fi를 켠 뒤 다시 시도해 주세요.';
   }
-  return '현재 위치를 가져올 수 없습니다. GPS 또는 Wi‑Fi 연결을 확인해 주세요.';
+  return '현재 위치를 가져올 수 없습니다. GPS, Wi‑Fi 또는 컴퓨터의 위치 서비스를 확인해 주세요.';
 }
 
 const getClubColorClass = (clubName: string | undefined): string => {
@@ -534,7 +542,7 @@ export default function Home() {
         };
       }
       if (result.status === 'low-accuracy') {
-        alert(`GPS 정확도가 낮아 신청할 수 없습니다. 잠시 후 다시 시도해 주세요. (현재 오차 ±${Math.round(result.accuracyMeters)}m)`);
+        alert(`현재 위치 정확도가 낮아 신청할 수 없습니다. Wi‑Fi 또는 위치 서비스를 확인한 뒤 다시 시도해 주세요. (현재 오차 ±${Math.round(result.accuracyMeters)}m)`);
       } else if (result.status === 'outside') {
         alert(`구장 밖에서는 신청할 수 없습니다. (구장까지 ${Math.round(result.distanceMeters ?? 0)}m / 허용 ${Math.round(result.allowedMeters ?? 0)}m)`);
       } else {
@@ -1050,11 +1058,11 @@ export default function Home() {
               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-rose-500" />
               <span>
                 {locationError || (isInsideGeofence === null
-                  ? 'GPS 정확도를 개선하는 중입니다. 창가나 야외에서 잠시 기다려 주세요.'
+                  ? '위치 정확도를 개선하는 중입니다. Wi‑Fi를 연결하고 잠시 기다려 주세요.'
                   : '구장 밖으로 확인되었습니다. 구장 내로 이동한 뒤 잠시 후 다시 확인해 주세요.')}
                 {locationDiagnostic && !locationError && (
                   <span className="block mt-1 text-rose-500">
-                    현재 거리 {locationDiagnostic.distanceMeters}m · GPS 오차 ±{locationDiagnostic.accuracyMeters}m · 허용 거리 {locationDiagnostic.allowedMeters}m
+                    현재 거리 {locationDiagnostic.distanceMeters}m · 위치 오차 ±{locationDiagnostic.accuracyMeters}m · 허용 거리 {locationDiagnostic.allowedMeters}m
                   </span>
                 )}
                 {locationDiagnostic && locationDiagnostic.accuracyMeters > 1000 && (
@@ -1190,7 +1198,7 @@ export default function Home() {
           <div className="bg-rose-50 border border-rose-100 text-rose-700 px-4 py-3 rounded-2xl text-xs font-semibold text-left leading-normal flex items-start gap-2 shadow-sm">
             <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <span>{locationError || (isInsideGeofence === null
-              ? 'GPS 정확도를 확인하는 중입니다. 정확한 위치가 확인될 때까지 신청할 수 없습니다.'
+              ? '위치 정확도를 확인하는 중입니다. 정확한 위치가 확인될 때까지 신청할 수 없습니다.'
               : '구장 밖으로 확인되어 신청할 수 없습니다. 구장 안으로 이동해 주세요.')}</span>
           </div>
         </div>

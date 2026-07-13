@@ -1,6 +1,37 @@
 -- reserve_court_at_stadium RPC가 404로 조회되지 않을 때 실행하세요.
 -- Supabase SQL Editor에서 전체 실행 후 앱을 새로고침합니다.
 
+-- 현재 앱의 예약 RPC가 사용하는 테이블이 누락된 경우 먼저 생성합니다.
+-- courts, members, stadiums는 기본/멀티 구장 스키마가 먼저 적용되어 있어야 합니다.
+create extension if not exists pgcrypto;
+
+do $$
+begin
+  if to_regclass('public.reservations') is null then
+    if to_regclass('public.courts') is null
+       or to_regclass('public.members') is null
+       or to_regclass('public.stadiums') is null then
+      raise exception '기본 스키마가 누락되었습니다. schema.sql과 multi_stadium_schema.sql을 먼저 실행하세요.';
+    end if;
+
+    create table public.reservations (
+      id uuid primary key default gen_random_uuid(),
+      court_id integer not null references public.courts(id) on delete cascade,
+      user_id uuid not null references public.members(id) on delete cascade,
+      team_number integer not null default 1,
+      stadium_id integer not null references public.stadiums(id) on delete cascade,
+      status text not null default 'waiting',
+      confirmed_at timestamptz,
+      created_at timestamptz not null default now()
+    );
+  end if;
+end $$;
+
+create index if not exists reservations_stadium_court_team_idx
+  on public.reservations(stadium_id, court_id, team_number, status);
+create unique index if not exists reservations_stadium_user_uidx
+  on public.reservations(stadium_id, user_id);
+
 create or replace function public.reserve_court_at_stadium(
   p_member_id uuid,
   p_access_token uuid,
