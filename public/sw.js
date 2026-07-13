@@ -1,6 +1,5 @@
-const CACHE_NAME = 'badcot-cache-v2';
+const CACHE_NAME = 'badcot-cache-v3';
 const ASSETS_TO_CACHE = [
-  '/',
   '/manifest.json',
   '/badcotlogo.png'
 ];
@@ -30,11 +29,21 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Bypass Supabase and API calls to prevent breaking real-time updates
+  const requestUrl = new URL(event.request.url);
+
+  // Next.js HTML/청크는 배포·개발 시 파일명이 바뀌므로 서비스워커가 캐시하지 않는다.
+  // 그렇지 않으면 이전 HTML이 새 빌드에 없는 청크를 요청하여 404가 발생한다.
+  const isNextAsset = requestUrl.pathname.startsWith('/_next/');
+  const isDocument = event.request.destination === 'document';
+
+  // Bypass Supabase, API, HTML and Next.js assets to prevent stale app shells.
   if (
     event.request.url.includes('supabase.co') ||
     event.request.url.includes('/api/') ||
-    event.request.method !== 'GET'
+    event.request.method !== 'GET' ||
+    isNextAsset ||
+    isDocument ||
+    requestUrl.pathname === '/sw.js'
   ) {
     return;
   }
@@ -45,8 +54,8 @@ self.addEventListener('fetch', (event) => {
         return cachedResponse;
       }
       return fetch(event.request).then((response) => {
-        // Cache static assets dynamically
-        if (response.status === 200 && event.request.url.startsWith(self.location.origin)) {
+        // 허용한 정적 자산만 동적으로 캐시한다.
+        if (response.status === 200 && ASSETS_TO_CACHE.includes(requestUrl.pathname)) {
           const responseClone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, responseClone);

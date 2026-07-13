@@ -84,6 +84,10 @@ export default function AdminPage() {
     const [newAdminEmail, setNewAdminEmail] = useState('');
     const [newAdminPassword, setNewAdminPassword] = useState('');
     const [mapLoaded, setMapLoaded] = useState(false);
+    const [locationSearchQuery, setLocationSearchQuery] = useState('');
+    const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+    const [locationSearchError, setLocationSearchError] = useState('');
+    const [locationSearchStatus, setLocationSearchStatus] = useState('');
     const [stadiums, setStadiums] = useState<any[]>([]);
     const [currentStadiumId, setCurrentStadiumId] = useState<number | null>(null);
     const [adminRole, setAdminRole] = useState<'superadmin' | 'manager' | null>(null);
@@ -139,6 +143,18 @@ export default function AdminPage() {
         if (!confirm('정말 삭제하시겠습니까?')) return;
         await supabase.from('admin_users').delete().eq('id', id);
         fetchAdminUsers();
+    };
+
+    const handleSendPasswordReset = async (email: string) => {
+        if (!confirm(`${email} 계정으로 비밀번호 재설정 링크를 보내시겠습니까?`)) return;
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: `${window.location.origin}/admin/login`,
+        });
+        if (error) {
+            alert(`비밀번호 초기화 메일 발송 실패: ${error.message}`);
+            return;
+        }
+        alert('비밀번호 재설정 링크를 이메일로 발송했습니다. 이메일의 링크에서 새 비밀번호를 설정하세요.');
     };
 
     const fetchStadiumsList = async () => {
@@ -491,6 +507,50 @@ export default function AdminPage() {
     const generateSiteQRCode = (currentBaseUrl?: string) => {
         const host = currentBaseUrl || baseUrl;
         setQrUrl(host ? `${host}/` : '');
+    };
+
+    const handleLocationSearch = async (event?: React.FormEvent) => {
+        event?.preventDefault();
+        const query = locationSearchQuery.trim();
+        if (query.length < 2) {
+            setLocationSearchError('주소나 장소명을 2자 이상 입력해 주세요.');
+            setLocationSearchStatus('');
+            return;
+        }
+
+        setIsSearchingLocation(true);
+        setLocationSearchError('');
+        setLocationSearchStatus('');
+        try {
+            const response = await fetch(
+                `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&accept-language=ko&countrycodes=kr&limit=5&q=${encodeURIComponent(query)}`,
+                { headers: { Accept: 'application/json' } }
+            );
+            if (!response.ok) throw new Error('검색 서버에 연결할 수 없습니다.');
+            const results = await response.json();
+            if (results.length === 0) {
+                setLocationSearchError('검색 결과가 없습니다. 주소를 조금 더 구체적으로 입력해 주세요.');
+            } else {
+                selectLocationSearchResult(results[0]);
+                setLocationSearchStatus('검색 위치를 지도에 표시했습니다. 좌표를 확인한 뒤 저장해 주세요.');
+            }
+        } catch (error) {
+            setLocationSearchError(error instanceof Error ? error.message : '위치 검색에 실패했습니다.');
+        } finally {
+            setIsSearchingLocation(false);
+        }
+    };
+
+    const selectLocationSearchResult = (result: { display_name: string; lat: string; lon: string }) => {
+        const latitude = Number(Number(result.lat).toFixed(6));
+        const longitude = Number(Number(result.lon).toFixed(6));
+        setSettings(prev => ({ ...prev, locationLat: latitude, locationLng: longitude }));
+        setLocationSearchError('');
+
+        const map = (window as any).adminMapInstance;
+        const marker = (window as any).adminMapMarker;
+        if (map) map.setView([latitude, longitude], 17);
+        if (marker) marker.setLatLng([latitude, longitude]);
     };
 
     const handleChangePassword = async (e: React.FormEvent) => {
@@ -1249,6 +1309,36 @@ export default function AdminPage() {
                                                 className="w-5 h-5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-not-allowed"
                                             />
                                         </div>
+                                        <div className="p-4 bg-indigo-50/60 border border-indigo-100 rounded-xl">
+                                            <label className="block text-xs font-bold text-slate-600 mb-2">🔎 주소·장소로 구장 위치 검색</label>
+                                            <form onSubmit={handleLocationSearch} className="flex flex-col sm:flex-row gap-2">
+                                                <input
+                                                    type="search"
+                                                    value={locationSearchQuery}
+                                                    onChange={(e) => {
+                                                        setLocationSearchQuery(e.target.value);
+                                                        setLocationSearchError('');
+                                                        setLocationSearchStatus('');
+                                                    }}
+                                                    placeholder="예: 수지 배드민턴 구장, 경기도 용인시 수지구..."
+                                                    className="flex-1 px-3 py-2.5 bg-white border border-indigo-200 rounded-lg text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                                />
+                                                <button
+                                                    type="submit"
+                                                    disabled={isSearchingLocation}
+                                                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white rounded-lg text-sm font-bold transition-colors"
+                                                >
+                                                    {isSearchingLocation ? '검색 중...' : '검색'}
+                                                </button>
+                                            </form>
+                                            {locationSearchError && (
+                                                <p className="mt-2 text-xs font-semibold text-rose-600">{locationSearchError}</p>
+                                            )}
+                                            {locationSearchStatus && (
+                                                <p className="mt-2 text-xs font-semibold text-emerald-600">{locationSearchStatus}</p>
+                                            )}
+                                            <p className="mt-2 text-[11px] text-slate-500">검색 후 일치하는 첫 위치를 지도에 표시합니다. 아래 좌표를 확인한 뒤 저장해 주세요.</p>
+                                        </div>
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-50/50 border border-slate-200/60 rounded-xl">
                                             <div>
                                                 <label className="block text-xs font-bold text-slate-500 mb-1">구장 위도 (Latitude)</label>
@@ -1375,10 +1465,31 @@ export default function AdminPage() {
                                 />
                             </div>
 
-                            <div className="bg-white rounded-2xl p-8 shadow-lg border border-slate-200">
-                                <h3 className="text-xl font-black text-slate-900 mb-2">관리자 비밀번호 변경</h3>
-                                <p className="text-sm text-slate-500 mb-6">현재 로그인한 관리자 계정({userEmail})의 비밀번호를 변경합니다.</p>
-                                <form onSubmit={handleChangePassword} className="max-w-xl space-y-4">
+                            {/* 저장 버튼이 지도 아래로 이동되었습니다. */}
+                        </div>
+                    </div>
+                )}
+
+                {/* 매니저 관리 (최고 관리자 전용) */}
+                {activeMenu === 'managers' && adminRole === 'superadmin' && (
+                    <div className="max-w-6xl mx-auto space-y-8">
+                        <div className="mb-8">
+                            <h2 className="text-4xl font-black text-slate-900 mb-2 flex items-center gap-3">
+                                <Shield className="w-10 h-10 text-indigo-600" />
+                                매니저 관리
+                            </h2>
+                            <p className="text-slate-600 font-medium">관리자 및 구장 담당 매니저 권한을 관리하세요</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                            {/* 현재 관리자 비밀번호 */}
+                            <div className="bg-white rounded-3xl p-8 shadow-lg border border-slate-200 h-fit">
+                                <h3 className="text-xl font-black text-slate-900 mb-2">비밀번호 초기화 및 변경</h3>
+                                <p className="text-sm text-slate-500 mb-6">
+                                    현재 로그인한 관리자({userEmail})의 비밀번호를 변경합니다.
+                                    초기 비밀번호는 Supabase SQL Editor에서 초기화할 수 있습니다.
+                                </p>
+                                <form onSubmit={handleChangePassword} className="space-y-4">
                                     <input
                                         type="password"
                                         value={newPassword}
@@ -1400,32 +1511,13 @@ export default function AdminPage() {
                                     <button
                                         type="submit"
                                         disabled={isChangingPassword}
-                                        className="px-6 py-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold disabled:opacity-50"
+                                        className="w-full px-6 py-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold disabled:opacity-50"
                                     >
                                         {isChangingPassword ? '변경 중...' : '비밀번호 변경'}
                                     </button>
                                 </form>
                             </div>
 
-
-
-                            {/* 저장 버튼이 지도 아래로 이동되었습니다. */}
-                        </div>
-                    </div>
-                )}
-
-                {/* 매니저 관리 (최고 관리자 전용) */}
-                {activeMenu === 'managers' && adminRole === 'superadmin' && (
-                    <div className="max-w-6xl mx-auto space-y-8">
-                        <div className="mb-8">
-                            <h2 className="text-4xl font-black text-slate-900 mb-2 flex items-center gap-3">
-                                <Shield className="w-10 h-10 text-indigo-600" />
-                                매니저 관리
-                            </h2>
-                            <p className="text-slate-600 font-medium">관리자 및 구장 담당 매니저 권한을 관리하세요</p>
-                        </div>
-
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                             {/* 매니저 추가 폼 */}
                             <div className="bg-white rounded-3xl p-8 shadow-lg border border-slate-200 h-fit">
                                 <h3 className="text-xl font-black text-slate-900 mb-6 flex items-center gap-2">
@@ -1597,7 +1689,13 @@ export default function AdminPage() {
                                                     <td className="py-4 px-4 text-slate-500">
                                                         {admin.role === 'superadmin' ? '모든 구장 접근가능' : (admin.stadiums?.name || '미배정')}
                                                     </td>
-                                                    <td className="py-4 px-4 text-right">
+                                                    <td className="py-4 px-4 text-right whitespace-nowrap">
+                                                        <button
+                                                            onClick={() => handleSendPasswordReset(admin.email)}
+                                                            className="text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg transition-all mr-2"
+                                                        >
+                                                            비밀번호 초기화
+                                                        </button>
                                                         {admin.email !== userEmail && (
                                                             <button
                                                                 onClick={() => handleDeleteAdmin(admin.id)}

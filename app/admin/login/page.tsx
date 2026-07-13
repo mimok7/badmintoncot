@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { Mail, Lock, LogIn, UserPlus, Home } from 'lucide-react';
@@ -8,12 +8,26 @@ import { Mail, Lock, LogIn, UserPlus, Home } from 'lucide-react';
 export default function AdminLoginPage() {
     const router = useRouter();
     const [isSignUp, setIsSignUp] = useState(false);
+    const [isRecovery, setIsRecovery] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const [successMessage, setSuccessMessage] = useState('');
+
+    useEffect(() => {
+        const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
+            if (event === 'PASSWORD_RECOVERY') {
+                setIsRecovery(true);
+                setIsSignUp(false);
+                setError('');
+                setSuccessMessage('새 비밀번호를 입력해 주세요.');
+            }
+        });
+
+        return () => authListener.subscription.unsubscribe();
+    }, []);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -76,7 +90,42 @@ export default function AdminLoginPage() {
                 }, 3000);
             }
         } catch (error) {
-            setError(error instanceof Error ? error.message : '회원가입에 실패했습니다.');
+            const message = error instanceof Error ? error.message : '';
+            if (/already registered|already exists|duplicate|user.*exist|등록된 사용자가 있/i.test(message)) {
+                setIsSignUp(false);
+                setPassword('');
+                setConfirmPassword('');
+                setSuccessMessage('이미 등록된 관리자 이메일입니다. 회원가입이 아니라 로그인해 주세요. 비밀번호를 모르면 초기화 SQL을 실행하세요.');
+                return;
+            }
+            setError(message || '회원가입에 실패했습니다. Supabase Auth 설정과 이메일 주소를 확인해주세요.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleRecovery = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setError('');
+        setSuccessMessage('');
+
+        if (password.length < 6) {
+            setError('비밀번호는 최소 6자리 이상이어야 합니다.');
+            return;
+        }
+        if (password !== confirmPassword) {
+            setError('새 비밀번호가 일치하지 않습니다.');
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            const { error } = await supabase.auth.updateUser({ password });
+            if (error) throw error;
+            alert('비밀번호가 변경되었습니다.');
+            router.push('/admin');
+        } catch (error) {
+            setError(error instanceof Error ? error.message : '비밀번호 변경에 실패했습니다.');
         } finally {
             setIsLoading(false);
         }
@@ -102,14 +151,14 @@ export default function AdminLoginPage() {
                         <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
                     </div>
                     <h1 className="text-4xl font-black text-white mb-2">
-                        {isSignUp ? '관리자 회원가입' : '관리자 로그인'}
+                        {isRecovery ? '비밀번호 변경' : isSignUp ? '관리자 회원가입' : '관리자 로그인'}
                     </h1>
                     <p className="text-blue-200 font-medium">배드민턴 코트 관리 시스템</p>
                 </div>
 
                 {/* 로그인/회원가입 폼 */}
                 <div className="bg-white rounded-2xl shadow-2xl p-8">
-                    <form onSubmit={isSignUp ? handleSignUp : handleLogin} className="space-y-6">
+                    <form onSubmit={isRecovery ? handleRecovery : isSignUp ? handleSignUp : handleLogin} className="space-y-6">
                         {/* 이메일 입력 */}
                         <div>
                             <label className="block text-sm font-bold text-slate-700 mb-2">
@@ -122,7 +171,8 @@ export default function AdminLoginPage() {
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
                                     placeholder="admin@example.com"
-                                    required
+                                    required={!isRecovery}
+                                    disabled={isRecovery}
                                     className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-300 outline-none transition-all font-semibold text-slate-800"
                                 />
                             </div>
@@ -147,7 +197,7 @@ export default function AdminLoginPage() {
                         </div>
 
                         {/* 비밀번호 확인 (회원가입 시에만) */}
-                        {isSignUp && (
+                        {(isSignUp || isRecovery) && (
                             <div>
                                 <label className="block text-sm font-bold text-slate-700 mb-2">
                                     비밀번호 확인
@@ -189,11 +239,16 @@ export default function AdminLoginPage() {
                             {isLoading ? (
                                 <>
                                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                    {isSignUp ? '회원가입 중...' : '로그인 중...'}
+                                    {isRecovery ? '변경 중...' : isSignUp ? '회원가입 중...' : '로그인 중...'}
                                 </>
                             ) : (
                                 <>
-                                    {isSignUp ? (
+                                    {isRecovery ? (
+                                        <>
+                                            <Lock className="w-5 h-5" />
+                                            비밀번호 변경
+                                        </>
+                                    ) : isSignUp ? (
                                         <>
                                             <UserPlus className="w-5 h-5" />
                                             회원가입
@@ -210,7 +265,7 @@ export default function AdminLoginPage() {
                     </form>
 
                     {/* 전환 버튼 */}
-                    <div className="mt-6 pt-6 border-t border-slate-200 text-center">
+                    {!isRecovery && <div className="mt-6 pt-6 border-t border-slate-200 text-center">
                         <button
                             onClick={() => {
                                 setIsSignUp(!isSignUp);
@@ -222,9 +277,9 @@ export default function AdminLoginPage() {
                             }}
                             className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors"
                         >
-                            {isSignUp ? '이미 계정이 있으신가요? 로그인' : '계정이 없으신가요? 회원가입'}
+                            {isSignUp ? '이미 계정이 있으신가요? 로그인' : '관리자 계정 회원가입'}
                         </button>
-                    </div>
+                    </div>}
                 </div>
             </div>
         </div>
