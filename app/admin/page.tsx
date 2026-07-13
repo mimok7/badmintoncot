@@ -19,7 +19,7 @@ import {
     LogOut
 } from 'lucide-react';
 
-type MenuType = 'qr' | 'courts' | 'usage' | 'settings' | 'clubs' | 'managers';
+type MenuType = 'qr' | 'courts' | 'usage' | 'settings' | 'location' | 'clubs' | 'managers';
 
 interface Court {
     id: number;
@@ -383,7 +383,7 @@ export default function AdminPage() {
 
     // 2. Leaflet 지도 인스턴스 초기화 (구글 맵 레이어)
     useEffect(() => {
-        if (!mapLoaded || activeMenu !== 'settings') return;
+        if (!mapLoaded || activeMenu !== 'location' || adminRole !== 'superadmin') return;
 
         const L = (window as any).L;
         if (!L) return;
@@ -437,7 +437,7 @@ export default function AdminPage() {
             map.invalidateSize();
         }, 300);
 
-    }, [mapLoaded, activeMenu]);
+    }, [mapLoaded, activeMenu, adminRole]);
 
     const handleReloadMap = () => {
         const map = (window as any).adminMapInstance;
@@ -525,6 +525,7 @@ export default function AdminPage() {
             });
             if (error) throw error;
             setLocationCheckEnabled(enabled);
+            localStorage.setItem('badminton_location_check_enabled', String(enabled));
             alert(enabled
                 ? '위치기반 제한이 활성화되었습니다. 구장 반경 내에서만 입장과 신청이 가능합니다.'
                 : '위치기반 제한이 해제되었습니다. 사용자는 선택한 구장에서 작업할 수 있습니다.');
@@ -796,7 +797,10 @@ export default function AdminPage() {
         { id: 'usage' as MenuType, icon: Activity, label: '사용 현황', color: 'slate' },
         { id: 'clubs' as MenuType, icon: Users, label: '클럽 관리', color: 'slate' },
         { id: 'settings' as MenuType, icon: Settings, label: '환경설정', color: 'slate' },
-        ...(adminRole === 'superadmin' ? [{ id: 'managers' as MenuType, icon: Shield, label: '매니저 관리', color: 'slate' }] : []),
+        ...(adminRole === 'superadmin' ? [
+            { id: 'location' as MenuType, icon: MapPin, label: '구장 위치 설정', color: 'slate' },
+            { id: 'managers' as MenuType, icon: Shield, label: '매니저 관리', color: 'slate' },
+        ] : []),
     ];
 
     // 로딩 중이거나 인증되지 않은 경우
@@ -1228,18 +1232,27 @@ export default function AdminPage() {
                     </div>
                 )}
 
-                {/* 환경설정 */}
-                {activeMenu === 'settings' && (
+                {/* 환경설정 / 최고 관리자 전용 구장 위치 설정 */}
+                {(activeMenu === 'settings' || (activeMenu === 'location' && adminRole === 'superadmin')) && (
                     <div>
                         <div className="mb-8">
                             <h2 className="text-4xl font-black text-slate-900 mb-2 flex items-center gap-3">
-                                <Settings className="w-10 h-10 text-indigo-600" />
-                                환경설정
+                                {activeMenu === 'location' ? (
+                                    <MapPin className="w-10 h-10 text-indigo-600" />
+                                ) : (
+                                    <Settings className="w-10 h-10 text-indigo-600" />
+                                )}
+                                {activeMenu === 'location' ? '구장 위치 설정' : '환경설정'}
                             </h2>
-                            <p className="text-slate-600 font-medium">배드민턴장 정보 및 운영 설정을 관리하세요</p>
+                            <p className="text-slate-600 font-medium">
+                                {activeMenu === 'location'
+                                    ? '구장별 주소, 위도·경도 및 허용 반경을 관리하세요'
+                                    : '배드민턴장 정보 및 운영 설정을 관리하세요'}
+                            </p>
                         </div>
 
                         <div className="space-y-6">
+                            {activeMenu === 'settings' && (
                             <div className="bg-white rounded-2xl p-8 shadow-lg border border-slate-200">
                                 <h3 className="text-xl font-black text-slate-900 mb-6">기본 정보</h3>
                                 <div className="space-y-4">
@@ -1317,26 +1330,14 @@ export default function AdminPage() {
                                     </div>
                                 </div>
                             </div>
+                            )}
 
-                            {adminRole === 'superadmin' && (
+                            {activeMenu === 'location' && adminRole === 'superadmin' && (
                                 <div className="bg-white rounded-2xl p-8 shadow-lg border border-slate-200">
                                     <h3 className="text-xl font-black text-slate-900 mb-6 flex items-center gap-2">
-                                        <span>📍 위치 기반 서비스(지오펜싱) 제한</span>
+                                        <span>📍 구장 위치 설정</span>
                                     </h3>
                                     <div className="space-y-4">
-                                        <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-200">
-                                            <div>
-                                                <span className="text-sm font-bold text-slate-700 block">위치기반 제한 활성화</span>
-                                                <span className="text-xs text-slate-400">구장 반경 내의 사용자만 입장하도록 제한합니다.</span>
-                                            </div>
-                                            <input
-                                                type="checkbox"
-                                                checked={locationCheckEnabled}
-                                                disabled={isSavingLocationCheck}
-                                                onChange={(event) => handleLocationCheckChange(event.target.checked)}
-                                                className="w-5 h-5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 disabled:cursor-wait"
-                                            />
-                                        </div>
                                         <div className="p-4 bg-indigo-50/60 border border-indigo-100 rounded-xl">
                                             <label className="block text-xs font-bold text-slate-600 mb-2">🔎 주소·장소로 구장 위치 검색</label>
                                             <form onSubmit={handleLocationSearch} className="flex flex-col sm:flex-row gap-2">
@@ -1467,19 +1468,13 @@ export default function AdminPage() {
                                                 >
                                                     💾 위치 설정 저장
                                                 </button>
-                                                <button 
-                                                    type="button"
-                                                    onClick={handleSaveSettings}
-                                                    className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white font-bold rounded-xl text-sm transition-all shadow-md hover:shadow-lg active:scale-[0.98] flex items-center gap-1.5"
-                                                >
-                                                    ⚙️ 전체 설정 저장
-                                                </button>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
                             )}
 
+                            {activeMenu === 'settings' && (
                             <div className="bg-white rounded-2xl p-8 shadow-lg border border-slate-200">
                                 <h3 className="text-xl font-black text-slate-900 mb-6 flex items-center gap-2">
                                     <Settings className="w-5 h-5 text-indigo-600" />
@@ -1491,9 +1486,17 @@ export default function AdminPage() {
                                     rows={8}
                                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-300 outline-none transition-all font-semibold text-slate-800 resize-none"
                                 />
+                                <div className="mt-6 flex justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={handleSaveSettings}
+                                        className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white font-bold rounded-xl text-sm transition-all shadow-md hover:shadow-lg active:scale-[0.98]"
+                                    >
+                                        ⚙️ 환경설정 저장
+                                    </button>
+                                </div>
                             </div>
-
-                            {/* 저장 버튼이 지도 아래로 이동되었습니다. */}
+                            )}
                         </div>
                     </div>
                 )}
@@ -1507,6 +1510,29 @@ export default function AdminPage() {
                                 매니저 관리
                             </h2>
                             <p className="text-slate-600 font-medium">관리자 및 구장 담당 매니저 권한을 관리하세요</p>
+                        </div>
+
+                        <div className="bg-white rounded-3xl p-8 shadow-lg border border-slate-200">
+                            <h3 className="text-xl font-black text-slate-900 mb-5 flex items-center gap-2">
+                                <span>📍 위치 기반 서비스(지오펜싱) 제한</span>
+                            </h3>
+                            <div className="flex items-center justify-between gap-6 p-4 bg-slate-50 rounded-xl border border-slate-200">
+                                <div>
+                                    <span className="text-sm font-bold text-slate-700 block">위치기반 제한 활성화</span>
+                                    <span className="text-xs text-slate-400">구장 반경 내의 사용자만 입장하도록 제한합니다.</span>
+                                    <span className={`mt-1 block text-xs font-bold ${locationCheckEnabled ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                        현재 상태: {locationCheckEnabled ? '활성화' : '해제'}
+                                    </span>
+                                </div>
+                                <input
+                                    type="checkbox"
+                                    checked={locationCheckEnabled}
+                                    disabled={isSavingLocationCheck}
+                                    onChange={(event) => handleLocationCheckChange(event.target.checked)}
+                                    aria-label="위치기반 제한 활성화"
+                                    className="w-6 h-6 flex-shrink-0 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 disabled:cursor-wait"
+                                />
+                            </div>
                         </div>
 
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

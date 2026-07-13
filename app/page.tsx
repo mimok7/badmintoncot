@@ -211,12 +211,28 @@ export default function Home() {
   const locationCheckPaused = !locationCheckEnabled;
 
   useEffect(() => {
+    let mounted = true;
     const fetchLocationCheckSetting = async () => {
       const { data, error } = await supabase.rpc('get_location_check_enabled');
       // 설정을 읽을 수 없을 때는 기존 위치 인증을 유지한다.
-      if (!error && typeof data === 'boolean') setLocationCheckEnabled(data);
+      if (mounted && !error && typeof data === 'boolean') setLocationCheckEnabled(data);
     };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === 'badminton_location_check_enabled') fetchLocationCheckSetting();
+    };
+
     fetchLocationCheckSetting();
+    const timer = window.setInterval(fetchLocationCheckSetting, 15000);
+    window.addEventListener('focus', fetchLocationCheckSetting);
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', fetchLocationCheckSetting);
+      window.removeEventListener('storage', handleStorage);
+    };
   }, []);
 
   // 브라우저 알림 권한 요청 (최초 1회만 팝업)
@@ -606,6 +622,13 @@ export default function Home() {
 
     // 위치 인증 중지 기간에는 선택한 구장에서 바로 작업한다.
     if (locationCheckPaused || isInsideGeofence === true) {
+      if (locationCheckPaused && currentStadium?.id !== selected.id) {
+        // 다른 구장의 세션/예약 상태가 새 구장 화면에 잠시 남지 않도록 정리한다.
+        setSession(null);
+        setMyReservedCourtId(null);
+        setMyTeamNumber(null);
+        setMyCurrentStatus(null);
+      }
       currentStadiumIdRef.current = selected.id;
       setCurrentStadium(selected);
     }
@@ -1092,7 +1115,7 @@ export default function Home() {
           </>
           
           {/* 위치 및 알림 경고 안내문구 */}
-          {stadiums.length > 1 && (
+          {locationCheckPaused && stadiums.length > 1 && (
             <div className="bg-white border border-indigo-100 px-3.5 py-3 rounded-2xl mb-3 text-left shadow-sm">
               <label htmlFor="stadium-select" className="block text-[10px] font-bold text-slate-500 mb-1.5">
                 📍 이용할 구장 선택
@@ -1108,11 +1131,9 @@ export default function Home() {
                   <option key={stadium.id} value={stadium.id}>{stadium.name}</option>
                 ))}
               </select>
-              {!locationCheckPaused && isInsideGeofence !== true && (
-                <p className="mt-1.5 text-[10px] font-semibold text-slate-500">
-                  구장 선택은 표시용이며, 입장과 신청은 선택한 구장 위치 안에서만 가능합니다.
-                </p>
-              )}
+              <p className="mt-1.5 text-[10px] font-semibold text-amber-700">
+                위치기반 제한이 비활성화되어 선택한 구장에서 이용할 수 있습니다.
+              </p>
             </div>
           )}
           {!locationCheckPaused && (isInsideGeofence === false || isInsideGeofence === null) && (
@@ -1270,6 +1291,29 @@ export default function Home() {
           <div className="bg-amber-50 border border-amber-100 text-amber-800 px-4 py-3 rounded-2xl text-xs font-semibold text-left leading-normal flex items-start gap-2 shadow-sm">
             <BellOff className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <span>알림 권한이 비활성화 상태입니다. 알림을 허용하지 않으면 본인의 게임 대기 순서(입장 차례) 알림을 실시간으로 받지 못합니다.</span>
+          </div>
+        </div>
+      )}
+      {locationCheckPaused && stadiums.length > 1 && (
+        <div className="max-w-7xl mx-auto px-4 mt-3">
+          <div className="bg-white border border-indigo-100 px-4 py-3 rounded-2xl shadow-sm">
+            <label htmlFor="member-stadium-select" className="block text-[11px] font-bold text-slate-600 mb-1.5">
+              📍 이용할 구장 선택
+            </label>
+            <select
+              id="member-stadium-select"
+              value={selectedStadiumId ?? currentStadium?.id ?? ''}
+              onChange={(event) => handleStadiumSelection(Number(event.target.value))}
+              className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700 focus:border-indigo-500 focus:outline-none"
+            >
+              <option value="" disabled>구장을 선택하세요</option>
+              {stadiums.map((stadium) => (
+                <option key={stadium.id} value={stadium.id}>{stadium.name}</option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-[10px] font-semibold text-amber-700">
+              위치기반 제한이 비활성화되어 선택한 구장에서 이용할 수 있습니다.
+            </p>
           </div>
         </div>
       )}
