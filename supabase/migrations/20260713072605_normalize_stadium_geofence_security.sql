@@ -928,6 +928,10 @@ revoke insert, update on public.admin_users from anon, authenticated;
 
 -- SECURITY DEFINER 함수는 명시적으로 필요한 역할에만 공개한다.
 revoke execute on all functions in schema private from public, anon, authenticated;
+-- RLS 정책이 호출하는 관리자 판별 함수는 authenticated가 실행할 수 있어야 한다.
+-- 함수 자체는 SECURITY DEFINER이며 auth.uid()만 기준으로 판별한다.
+grant usage on schema private to authenticated;
+grant execute on function private.is_stadium_admin(integer, boolean) to authenticated;
 revoke execute on function public.get_member_profile(uuid, uuid) from public;
 revoke execute on function public.register_member_at_stadium(text, text, integer, double precision, double precision, double precision) from public;
 revoke execute on function public.enter_stadium_by_location(uuid, uuid, integer, double precision, double precision, double precision) from public;

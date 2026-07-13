@@ -90,6 +90,9 @@ export default function AdminPage() {
     const [adminUsers, setAdminUsers] = useState<any[]>([]);
     const [newAdminRole, setNewAdminRole] = useState<'superadmin' | 'manager'>('manager');
     const [newAdminTargetStadium, setNewAdminTargetStadium] = useState<number | null>(null);
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmNewPassword, setConfirmNewPassword] = useState('');
+    const [isChangingPassword, setIsChangingPassword] = useState(false);
 
     // States for adding new stadiums
     const [isAddStadiumOpen, setIsAddStadiumOpen] = useState(false);
@@ -488,6 +491,31 @@ export default function AdminPage() {
     const generateSiteQRCode = (currentBaseUrl?: string) => {
         const host = currentBaseUrl || baseUrl;
         setQrUrl(host ? `${host}/` : '');
+    };
+
+    const handleChangePassword = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (newPassword.length < 6) {
+            alert('비밀번호는 6자리 이상이어야 합니다.');
+            return;
+        }
+        if (newPassword !== confirmNewPassword) {
+            alert('새 비밀번호가 일치하지 않습니다.');
+            return;
+        }
+
+        setIsChangingPassword(true);
+        try {
+            const { error } = await supabase.auth.updateUser({ password: newPassword });
+            if (error) throw error;
+            setNewPassword('');
+            setConfirmNewPassword('');
+            alert('비밀번호가 변경되었습니다.');
+        } catch (error) {
+            alert(error instanceof Error ? error.message : '비밀번호 변경에 실패했습니다.');
+        } finally {
+            setIsChangingPassword(false);
+        }
     };
 
     const copyToClipboard = () => {
@@ -1345,6 +1373,38 @@ export default function AdminPage() {
                                     rows={8}
                                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-300 outline-none transition-all font-semibold text-slate-800 resize-none"
                                 />
+                            </div>
+
+                            <div className="bg-white rounded-2xl p-8 shadow-lg border border-slate-200">
+                                <h3 className="text-xl font-black text-slate-900 mb-2">관리자 비밀번호 변경</h3>
+                                <p className="text-sm text-slate-500 mb-6">현재 로그인한 관리자 계정({userEmail})의 비밀번호를 변경합니다.</p>
+                                <form onSubmit={handleChangePassword} className="max-w-xl space-y-4">
+                                    <input
+                                        type="password"
+                                        value={newPassword}
+                                        onChange={(e) => setNewPassword(e.target.value)}
+                                        placeholder="새 비밀번호 (6자리 이상)"
+                                        minLength={6}
+                                        required
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-semibold text-slate-800"
+                                    />
+                                    <input
+                                        type="password"
+                                        value={confirmNewPassword}
+                                        onChange={(e) => setConfirmNewPassword(e.target.value)}
+                                        placeholder="새 비밀번호 확인"
+                                        minLength={6}
+                                        required
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-semibold text-slate-800"
+                                    />
+                                    <button
+                                        type="submit"
+                                        disabled={isChangingPassword}
+                                        className="px-6 py-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold disabled:opacity-50"
+                                    >
+                                        {isChangingPassword ? '변경 중...' : '비밀번호 변경'}
+                                    </button>
+                                </form>
                             </div>
 
 
