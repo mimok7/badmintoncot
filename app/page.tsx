@@ -18,6 +18,7 @@ import {
   GeofenceResult,
   GeofenceStadium,
   isValidStadiumLocation,
+  MAX_ACCEPTABLE_ACCURACY_METERS,
 } from '@/lib/geofence';
 
 interface Member {
@@ -79,20 +80,54 @@ const FALLBACK_LOCATION_OPTIONS: PositionOptions = {
   maximumAge: 0,
 };
 
-function requestCurrentPosition(options: PositionOptions): Promise<GeolocationPosition> {
-  return new Promise((resolve, reject) => {
-    navigator.geolocation.getCurrentPosition(resolve, reject, options);
-  });
-}
-
 async function requestFreshPosition(): Promise<GeolocationPosition> {
-  try {
-    return await requestCurrentPosition(HIGH_ACCURACY_OPTIONS);
-  } catch (error) {
-    const locationError = error as GeolocationPositionError;
-    if (locationError.code === locationError.PERMISSION_DENIED) throw locationError;
-    return requestCurrentPosition(FALLBACK_LOCATION_OPTIONS);
-  }
+  return new Promise((resolve, reject) => {
+    let bestPosition: GeolocationPosition | null = null;
+    let lastError: GeolocationPositionError | null = null;
+    let watchId: number | undefined;
+    let settled = false;
+
+    const finish = (position?: GeolocationPosition) => {
+      if (settled) return;
+      settled = true;
+      if (watchId !== undefined) navigator.geolocation.clearWatch(watchId);
+      window.clearTimeout(timeoutId);
+      if (position || bestPosition) resolve(position ?? bestPosition!);
+      else if (lastError) reject(lastError);
+      else reject(new Error('위치 정보를 가져오지 못했습니다.'));
+    };
+
+    const handlePosition = (position: GeolocationPosition) => {
+      if (!bestPosition || position.coords.accuracy < bestPosition.coords.accuracy) {
+        bestPosition = position;
+      }
+      // 구장 판정 기준(100m) 안으로 들어온 샘플은 더 기다리지 않는다.
+      if (position.coords.accuracy <= MAX_ACCEPTABLE_ACCURACY_METERS) finish(position);
+    };
+
+    const handleError = (error: GeolocationPositionError) => {
+      lastError = error;
+      if (error.code === error.PERMISSION_DENIED) finish();
+    };
+
+    const timeoutId = window.setTimeout(() => {
+      if (bestPosition) {
+        finish();
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        handlePosition,
+        (error) => {
+          lastError = error;
+          finish();
+        },
+        FALLBACK_LOCATION_OPTIONS,
+      );
+    }, 30000);
+
+    watchId = navigator.geolocation.watchPosition(handlePosition, handleError, HIGH_ACCURACY_OPTIONS);
+    navigator.geolocation.getCurrentPosition(handlePosition, handleError, HIGH_ACCURACY_OPTIONS);
+  });
 }
 
 function getLocationErrorMessage(error: GeolocationPositionError): string {
@@ -151,6 +186,7 @@ export default function Home() {
   const [selectedClub, setSelectedClub] = useState<string>('');
   const [stadiums, setStadiums] = useState<Stadium[]>([]);
   const [currentStadium, setCurrentStadium] = useState<Stadium | null>(null);
+  const [selectedStadiumId, setSelectedStadiumId] = useState<number | null>(null);
   const [findingStadium, setFindingStadium] = useState<boolean>(true);
   const [isInsideGeofence, setIsInsideGeofence] = useState<boolean | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
@@ -367,6 +403,7 @@ export default function Home() {
         ?? (result.stadium as Stadium);
       if (matchedStadium) {
         currentStadiumIdRef.current = matchedStadium.id;
+        setSelectedStadiumId(matchedStadium.id);
         setCurrentStadium((previous) => previous?.id === matchedStadium.id ? previous : matchedStadium);
         setVenueName(matchedStadium.name);
         setIsInsideGeofence(true);
@@ -514,6 +551,19 @@ export default function Home() {
       return null;
     } finally {
       setLocationChecking(false);
+    }
+  };
+
+  const handleStadiumSelection = (stadiumId: number) => {
+    const selected = stadiums.find((stadium) => stadium.id === stadiumId);
+    if (!selected) return;
+    setSelectedStadiumId(selected.id);
+    setVenueName(selected.name);
+
+    // 드롭다운 선택만으로 위치 인증을 우회하지 않는다. 이미 위치 인증된 경우에만 대상 구장을 변경한다.
+    if (isInsideGeofence === true) {
+      currentStadiumIdRef.current = selected.id;
+      setCurrentStadium(selected);
     }
   };
 
@@ -837,7 +887,9 @@ export default function Home() {
     });
 
     if (error) {
-      if (error.code === '23505') {
+      if (error.code === 'PGRST202' || /could not find the function|function .* does not exist/i.test(error.message)) {
+        alert('신청 기능이 현재 연결되지 않았습니다. 관리자에게 reserve_court_at_stadium RPC 복구 SQL 실행을 요청해 주세요.');
+      } else if (error.code === '23505') {
         alert('이미 이 코트에 신청 중입니다.');
         // 예약 상태 다시 확인
         await checkMyReservation();
@@ -970,6 +1022,29 @@ export default function Home() {
           </>
           
           {/* 위치 및 알림 경고 안내문구 */}
+          {stadiums.length > 1 && (
+            <div className="bg-white border border-indigo-100 px-3.5 py-3 rounded-2xl mb-3 text-left shadow-sm">
+              <label htmlFor="stadium-select" className="block text-[10px] font-bold text-slate-500 mb-1.5">
+                📍 이용할 구장 선택
+              </label>
+              <select
+                id="stadium-select"
+                value={selectedStadiumId ?? currentStadium?.id ?? ''}
+                onChange={(event) => handleStadiumSelection(Number(event.target.value))}
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700 focus:border-indigo-500 focus:outline-none"
+              >
+                <option value="" disabled>구장을 선택하세요</option>
+                {stadiums.map((stadium) => (
+                  <option key={stadium.id} value={stadium.id}>{stadium.name}</option>
+                ))}
+              </select>
+              {isInsideGeofence !== true && (
+                <p className="mt-1.5 text-[10px] font-semibold text-slate-500">
+                  구장 선택은 표시용이며, 입장과 신청은 선택한 구장 위치 안에서만 가능합니다.
+                </p>
+              )}
+            </div>
+          )}
           {(isInsideGeofence === false || isInsideGeofence === null) && (
             <div className="bg-rose-50 border border-rose-100 text-rose-700 px-3.5 py-3 rounded-2xl mb-3 text-[10px] font-bold text-left leading-normal flex items-start gap-1.5 shadow-sm">
               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-rose-500" />
@@ -980,6 +1055,11 @@ export default function Home() {
                 {locationDiagnostic && !locationError && (
                   <span className="block mt-1 text-rose-500">
                     현재 거리 {locationDiagnostic.distanceMeters}m · GPS 오차 ±{locationDiagnostic.accuracyMeters}m · 허용 거리 {locationDiagnostic.allowedMeters}m
+                  </span>
+                )}
+                {locationDiagnostic && locationDiagnostic.accuracyMeters > 1000 && (
+                  <span className="block mt-1 text-rose-600">
+                    컴퓨터 위치 서비스의 오차가 너무 큽니다. Windows 위치 서비스를 켜고 Wi‑Fi를 연결한 뒤 브라우저 위치 권한을 허용하고 다시 시도해 주세요.
                   </span>
                 )}
               </span>
