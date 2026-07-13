@@ -657,6 +657,76 @@ export default function Home() {
     }
   }, [session]);
 
+  // 관리자 사용시간이 끝나기 전, 약 30분마다 위치를 자동 재확인한다.
+  // 브라우저가 백그라운드에서 타이머를 늦게 실행해도 visibilitychange 때 보정한다.
+  useEffect(() => {
+    if (locationCheckPaused || !member || !currentStadium || !session?.expires_at) return;
+
+    const stadiumId = currentStadium.id;
+    const accessToken = memberAccessTokenRef.current;
+    if (!accessToken) return;
+
+    let disposed = false;
+    let renewing = false;
+    let timer: number | undefined;
+
+    const renew = async () => {
+      if (disposed || renewing) return;
+      renewing = true;
+      let renewed = false;
+      try {
+        const position = await requestFreshPosition();
+        const localResult = evaluateGeofence(
+          position.coords.latitude,
+          position.coords.longitude,
+          position.coords.accuracy,
+          [currentStadium],
+        );
+        if (localResult.status !== 'inside') return;
+
+        const { data, error } = await supabase.rpc('renew_stadium_location_session', {
+          p_member_id: member.id,
+          p_access_token: accessToken,
+          p_stadium_id: stadiumId,
+          p_latitude: position.coords.latitude,
+          p_longitude: position.coords.longitude,
+          p_accuracy: position.coords.accuracy,
+        });
+        if (error) throw error;
+        if (!disposed && currentStadiumIdRef.current === stadiumId) {
+          renewed = true;
+          setSession(data as EntrySession);
+        }
+      } catch (error) {
+        console.error('위치 인증 세션 자동 갱신 실패:', error);
+      } finally {
+        renewing = false;
+        if (!disposed && !renewed) timer = window.setTimeout(renew, 30_000);
+      }
+    };
+
+    const schedule = () => {
+      const remaining = new Date(session.expires_at).getTime() - Date.now();
+      const delay = Math.max(1000, Math.min(30 * 60 * 1000, remaining - 30_000));
+      timer = window.setTimeout(renew, delay);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        const remaining = new Date(session.expires_at).getTime() - Date.now();
+        if (remaining <= 30 * 60 * 1000) void renew();
+      }
+    };
+
+    schedule();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      disposed = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [currentStadium, locationCheckPaused, member, session]);
+
   const checkUser = async () => {
     const savedNickname = localStorage.getItem('badminton_member_nickname');
     if (savedNickname) {
@@ -917,8 +987,6 @@ export default function Home() {
       alert('현재 구장 안에서만 코트 신청이 가능합니다.');
       return;
     }
-    const verifiedLocation = await verifyCurrentStadiumLocation(currentStadium.id);
-    if (!verifiedLocation) return;
     const accessToken = memberAccessTokenRef.current;
     if (!accessToken) {
       alert('회원 인증 정보가 없습니다. 다시 등록해 주세요.');
@@ -947,10 +1015,10 @@ export default function Home() {
       access_token: accessToken,
       court_id: courtId,
       team_number: teamNumber,
-      stadium_id: verifiedLocation.stadium.id,
-      latitude: verifiedLocation.latitude,
-      longitude: verifiedLocation.longitude,
-      accuracy: verifiedLocation.accuracy,
+      stadium_id: currentStadium.id,
+      latitude: currentStadium.latitude,
+      longitude: currentStadium.longitude,
+      accuracy: 0,
     };
     if (
       !Number.isInteger(reserveRequest.court_id) ||
@@ -1026,18 +1094,17 @@ export default function Home() {
     if (!confirmed) return;
 
     try {
-      const verifiedLocation = await verifyCurrentStadiumLocation(currentStadium.id);
       const accessToken = memberAccessTokenRef.current;
-      if (!verifiedLocation || !accessToken) return;
+      if (!accessToken) return;
 
       const { data, error } = await supabase.rpc('end_game_secure', {
         p_court_id: courtId,
         p_member_id: member.id,
         p_access_token: accessToken,
-        p_stadium_id: verifiedLocation.stadium.id,
-        p_latitude: verifiedLocation.latitude,
-        p_longitude: verifiedLocation.longitude,
-        p_accuracy: verifiedLocation.accuracy,
+        p_stadium_id: currentStadium.id,
+        p_latitude: currentStadium.latitude,
+        p_longitude: currentStadium.longitude,
+        p_accuracy: 0,
       });
 
       if (error) {
