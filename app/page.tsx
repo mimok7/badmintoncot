@@ -281,12 +281,6 @@ export default function Home() {
     };
   }, [member]);
 
-  const handleLogoutWithReason = (reason: string) => {
-    localStorage.removeItem('badminton_member_id');
-    alert(reason);
-    window.location.reload();
-  };
-
   // 실시간 지오펜싱 감지 (구장 이탈 시 자동 로그아웃)
   
   useEffect(() => {
@@ -297,31 +291,39 @@ export default function Home() {
     if ('geolocation' in navigator) {
       const checkPosition = (pos: GeolocationPosition) => {
         let foundStadium: Stadium | null = null;
-        let minDistance = Infinity;
+        let nearestStadium: Stadium | null = null;
+        let nearestDistance = Infinity;
+        let insideDistance = Infinity;
 
         for (const stadium of stadiums) {
           const dist = getDistanceInMeters(pos.coords.latitude, pos.coords.longitude, stadium.latitude, stadium.longitude);
-          // 모바일 GPS는 같은 장소에서도 수십~수백 m의 오차가 발생할 수 있습니다.
-          // 위치의 정확도 원을 고려해 구장 반경과 오차 원이 겹치면 구장 내로 판정합니다.
-          const accuracyAllowance = Math.min(Math.max(pos.coords.accuracy || 0, 0), 150);
+          if (dist < nearestDistance) {
+            nearestDistance = dist;
+            nearestStadium = stadium;
+          }
+
+          // 모바일 GPS는 같은 장소에서도 큰 오차가 발생할 수 있습니다.
+          // 기기가 제공한 정확도 원과 구장 반경이 겹치면 구장 내로 판정합니다.
+          const accuracyAllowance = Math.max(Number(pos.coords.accuracy) || 0, 0);
           const effectiveRadius = Math.max(Number(stadium.radius_meter) || 100, 50) + accuracyAllowance;
-          if (dist <= effectiveRadius && dist < minDistance) {
-            minDistance = dist;
+          if (dist <= effectiveRadius && dist < insideDistance) {
+            insideDistance = dist;
             foundStadium = stadium;
           }
         }
 
-        if (foundStadium) {
-          if (!currentStadium || currentStadium.id !== foundStadium.id) {
-            setCurrentStadium(foundStadium);
-            setVenueName(foundStadium.name);
+        // 구장 밖이어도 가장 가까운 구장 이름은 표시해 위치 결과를 명확히 합니다.
+        if (nearestStadium) {
+          if (!currentStadium || currentStadium.id !== nearestStadium.id) {
+            setCurrentStadium(nearestStadium);
           }
+          setVenueName(nearestStadium.name);
+        }
+
+        if (foundStadium) {
           setIsInsideGeofence(true);
         } else {
           setIsInsideGeofence(false);
-          if (session) {
-            handleLogoutWithReason('구장 밖으로 이동하여 자동 로그아웃되었습니다.');
-          }
         }
         setFindingStadium(false);
       };
@@ -329,7 +331,7 @@ export default function Home() {
       const locationOptions: PositionOptions = {
         enableHighAccuracy: true,
         timeout: 30000,
-        maximumAge: 10000
+        maximumAge: 0
       };
 
       navigator.geolocation.getCurrentPosition(
